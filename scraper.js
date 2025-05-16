@@ -144,25 +144,26 @@ async function scrapeKuramanime() {
         continue;
       }
 
-      const episode = await page.evaluate(() => {
-        const epContainer = document.querySelector('#episodeLists');
-        if (!epContainer) return null;
-
-        const htmlContent = epContainer.getAttribute('data-content');
-        if (!htmlContent) return null;
-
+            const episode = await page.evaluate(() => {
+        const epElement = document.querySelector('#episodeLists');
+        if (!epElement) return null;
+      
+        const contentHtml = epElement.getAttribute('data-content');
+        if (!contentHtml) return null;
+      
         const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = htmlContent;
-
-        const epLinks = Array.from(tempDiv.querySelectorAll('a.mt-2'));
+        tempDiv.innerHTML = contentHtml;
+      
+        const epLinks = Array.from(tempDiv.querySelectorAll('a.btn-danger'));
         if (epLinks.length === 0) return null;
-
+      
         const lastEp = epLinks[epLinks.length - 1];
         return {
           episode: lastEp.textContent.trim().replace(/\s+/g, ' '),
           link: lastEp.href
         };
       });
+
 
       if (!episode) {
         console.log('   - Tidak ada episode ditemukan.');
