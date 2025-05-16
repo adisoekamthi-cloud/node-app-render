@@ -2,6 +2,7 @@ const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const axios = require('axios');
 const moment = require('moment');
+const fs = require('fs');
 
 puppeteer.use(StealthPlugin());
 
@@ -39,6 +40,23 @@ const dayMap = {
   sunday: 'sunday'
 };
 
+async function autoScroll(page) {
+  await page.evaluate(async () => {
+    await new Promise(resolve => {
+      let totalHeight = 0;
+      const distance = 100;
+      const timer = setInterval(() => {
+        window.scrollBy(0, distance);
+        totalHeight += distance;
+        if (totalHeight >= document.body.scrollHeight) {
+          clearInterval(timer);
+          resolve();
+        }
+      }, 200);
+    });
+  });
+}
+
 async function scrapeKuramanime() {
   const localTitles = await getLocalTitles();
   if (localTitles.length === 0) {
@@ -63,7 +81,7 @@ async function scrapeKuramanime() {
   const page = await browser.newPage();
   await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36');
 
-  const hariIni = moment().format('dddd').toLowerCase(); // Contoh: 'monday'
+  const hariIni = moment().format('dddd').toLowerCase(); // contoh: 'friday'
   const scheduledDay = dayMap[hariIni];
 
   for (let i = 1; i <= 3; i++) {
@@ -71,12 +89,10 @@ async function scrapeKuramanime() {
     console.log(`🔎 Mengakses: ${targetUrl}`);
 
     try {
-      await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 60000 });
-      const itemsExist = await page.$('.product__item');
-      if (!itemsExist) {
-        console.log(`❌ Tidak ada data di halaman ${i}, lewati...`);
-        continue;
-      }
+      await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await autoScroll(page);
+      await page.waitForTimeout(3000);
+      await page.screenshot({ path: `screenshot-page-${i}.png`, fullPage: true });
     } catch (e) {
       console.error(`❌ Gagal akses halaman ${i}:`, e.message);
       continue;
@@ -92,6 +108,11 @@ async function scrapeKuramanime() {
         };
       }).filter(a => a.link !== null);
     });
+
+    if (animeList.length === 0) {
+      console.log(`❌ Tidak ada data di halaman ${i}, lewati...`);
+      continue;
+    }
 
     for (const anime of animeList) {
       const animeTitleLower = anime.title.toLowerCase();
@@ -110,24 +131,24 @@ async function scrapeKuramanime() {
       }
 
       const episode = await page.evaluate(() => {
-  const epContainer = document.querySelector('#episodeLists');
-  if (!epContainer) return null;
+        const epContainer = document.querySelector('#episodeLists');
+        if (!epContainer) return null;
 
-  const htmlContent = epContainer.getAttribute('data-content');
-  if (!htmlContent) return null;
+        const htmlContent = epContainer.getAttribute('data-content');
+        if (!htmlContent) return null;
 
-  const tempDiv = document.createElement('div');
-  tempDiv.innerHTML = htmlContent;
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = htmlContent;
 
-  const epLinks = Array.from(tempDiv.querySelectorAll('a.btn-danger'));
-  if (epLinks.length === 0) return null;
+        const epLinks = Array.from(tempDiv.querySelectorAll('a.btn-danger'));
+        if (epLinks.length === 0) return null;
 
-  const lastEp = epLinks[epLinks.length - 1];
-  return {
-    episode: lastEp.textContent.trim().replace(/\s+/g, ' '),
-    link: lastEp.href
-  };
-});
+        const lastEp = epLinks[epLinks.length - 1];
+        return {
+          episode: lastEp.textContent.trim().replace(/\s+/g, ' '),
+          link: lastEp.href
+        };
+      });
 
       if (!episode) {
         console.log('   - Tidak ada episode ditemukan.');
