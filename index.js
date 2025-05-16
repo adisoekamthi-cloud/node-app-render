@@ -67,7 +67,7 @@ async function scrapeKuramanime() {
     const page = await browser.newPage();
 
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36');
-    const baseUrl = 'https://v6.kuramanime.run/';
+    const baseUrl = 'https://v6.kuramanime.run/quick/ongoing?order_by=updated/';
 
     try {
         await page.goto(baseUrl, { waitUntil: 'networkidle2', timeout: 60000 });  // timeout diperpanjang
