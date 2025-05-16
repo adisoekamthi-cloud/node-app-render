@@ -59,6 +59,13 @@ async function scrapeKuramanime() {
 
   try {
     await page.goto(baseUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+
+    // Tambah delay manual agar JS dinamis selesai render
+    await page.waitForTimeout(5000);
+
+    // Debug: screenshot halaman setelah load
+    await page.screenshot({ path: 'kuramanime-list.png', fullPage: true });
+
     await page.waitForSelector('.product__item', { timeout: 60000 });
   } catch (err) {
     console.error('Gagal load halaman atau selector tidak ditemukan:', err.message);
@@ -66,6 +73,10 @@ async function scrapeKuramanime() {
     await browser.close();
     return;
   }
+
+  // Debug: tampilkan HTML halaman yang di-scrape (bisa banyak)
+  // const html = await page.content();
+  // console.log(html);
 
   const animeList = await page.evaluate(() => {
     const items = Array.from(document.querySelectorAll('.product__item'));
@@ -89,9 +100,10 @@ async function scrapeKuramanime() {
     console.log(`\n🎬 Judul: ${anime.title}`);
     console.log(`🆔 content_id: ${matched.content_id}`);
 
-    await page.goto(anime.link, { waitUntil: 'networkidle2', timeout: 60000 });
-
     try {
+      await page.goto(anime.link, { waitUntil: 'networkidle2', timeout: 60000 });
+      await page.waitForTimeout(3000); // tunggu 3 detik agar konten muncul
+
       await page.waitForSelector('#animeEpisodes a.ep-button', { timeout: 10000 });
     } catch {
       console.log('   - Gagal menemukan daftar episode.');
@@ -116,9 +128,10 @@ async function scrapeKuramanime() {
     }
 
     console.log(`   📺 Episode Terbaru: ${episode.episode}`);
-    await page.goto(episode.link, { waitUntil: 'networkidle2', timeout: 60000 });
 
     try {
+      await page.goto(episode.link, { waitUntil: 'networkidle2', timeout: 60000 });
+      await page.waitForTimeout(3000);
       await page.waitForSelector('#animeDownloadLink', { timeout: 10000 });
     } catch {
       console.log('     - Gagal menemukan link download');
@@ -156,9 +169,6 @@ async function scrapeKuramanime() {
 
     let url_480 = '';
     let url_720 = '';
-    let url_1080 = '';
-    let url_1440 = '';
-    let url_2160 = '';
 
     if (!pixeldrainLinks) {
       console.log('     - Tidak ada link pixeldrain ditemukan');
@@ -185,9 +195,9 @@ async function scrapeKuramanime() {
           view: 0,
           url_480,
           url_720,
-          url_1080,
-          url_1440,
-          url_2160,
+          url_1080: '',
+          url_1440: '',
+          url_2160: '',
           title
         });
 
