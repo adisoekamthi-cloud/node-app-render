@@ -19,13 +19,13 @@ const CONFIG = {
 
 // Comprehensive URL converter with multiple patterns
 function convertPixeldrainUrl(url) {
-    const regex = /https?:\/\/pixeldrain\.com\/[du]\/([a-zA-Z0-9]+)/;
-    const match = url.match(regex);
-    if (match) {
-      return `https://pixeldrain.com/api/filesystem/${match[1]}?attach`;
-    }
-    return null;
+  const match = url.match(/pixeldrain\.com\/(?:[a-z]+\/)?([a-zA-Z0-9]+)/);
+  if (match) {
+    return `https://pixeldrain.com/api/filesystem/${match[1]}?attach`;
+  }
+  return null;
 }
+
 
 // Enhanced local titles fetching with caching
 let localTitlesCache = null;
