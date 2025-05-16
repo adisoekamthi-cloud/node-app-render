@@ -91,7 +91,8 @@ async function scrapeKuramanime() {
     try {
       await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
       await autoScroll(page);
-      await page.waitForTimeout(3000);
+     await new Promise(resolve => setTimeout(resolve, 3000));
+
       await page.screenshot({ path: `screenshot-page-${i}.png`, fullPage: true });
     } catch (e) {
       console.error(`❌ Gagal akses halaman ${i}:`, e.message);
