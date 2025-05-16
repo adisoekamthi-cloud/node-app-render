@@ -29,6 +29,16 @@ async function getLocalTitles() {
   return [];
 }
 
+const dayMap = {
+  monday: 'monday',
+  tuesday: 'tuesday',
+  wednesday: 'wednesday',
+  thursday: 'thursday',
+  friday: 'friday',
+  saturday: 'saturday',
+  sunday: 'sunday'
+};
+
 async function scrapeKuramanime() {
   const localTitles = await getLocalTitles();
   if (localTitles.length === 0) {
@@ -53,22 +63,22 @@ async function scrapeKuramanime() {
   const page = await browser.newPage();
   await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36');
 
-  // Ambil nama hari sekarang dalam lowercase bahasa Inggris
-  const dayName = moment().format('dddd').toLowerCase(); // e.g., 'monday'
+  const hariIni = moment().format('dddd').toLowerCase(); // Contoh: 'monday'
+  const scheduledDay = dayMap[hariIni];
 
   for (let i = 1; i <= 3; i++) {
-    const targetUrl = `https://v6.kuramanime.run/schedule?scheduled_day=${dayName}&page=${i}`;
-    console.log(`🔍 Mengakses: ${targetUrl}`);
+    const targetUrl = `https://v6.kuramanime.run/schedule?scheduled_day=${scheduledDay}&page=${i}`;
+    console.log(`🔎 Mengakses: ${targetUrl}`);
 
     try {
       await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 60000 });
-      const exists = await page.$('.product__item');
-      if (!exists) {
-        console.log(`   ⏭ Tidak ada data di halaman ${i}, lanjut ke page berikutnya.`);
+      const itemsExist = await page.$('.product__item');
+      if (!itemsExist) {
+        console.log(`❌ Tidak ada data di halaman ${i}, lewati...`);
         continue;
       }
     } catch (e) {
-      console.error(`❌ Gagal akses page ${i}:`, e.message);
+      console.error(`❌ Gagal akses halaman ${i}:`, e.message);
       continue;
     }
 
@@ -198,7 +208,7 @@ async function scrapeKuramanime() {
 }
 
 scrapeKuramanime().catch(e => {
-  console.error('Error di fungsi utama:', e);
+  console.error('Error di fungsi utama:', e.stack);
 });
 
 module.exports = { scrapeKuramanime };
