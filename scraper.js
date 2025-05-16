@@ -101,33 +101,29 @@ async function scrapeKuramanime() {
 
    const animeList = await page.evaluate(() => {
   const items = Array.from(document.querySelectorAll('.product__item'));
-  const animeList = [];
+  const list = [];
 
   items.forEach(item => {
     const linkElem = item.querySelector('h5 a');
-    if (!linkElem || !linkElem.href) return;
+    if (!linkElem) return;
 
     const link = linkElem.href;
     const title = linkElem.textContent.trim();
-    
-    // Ekstrak ID dari URL, misal: /anime/3499/wind-breaker-season-2
+
+    // Ekstrak ID dari URL
     const match = link.match(/\/anime\/(\d+)\//);
     const id = match ? match[1] : null;
     if (!id) return;
 
-    // Ambil input hidden yang menyimpan episode terbaru
+    // Cari input hidden yang berisi episode (mungkin berada di luar item)
     const epInput = document.querySelector(`input.actual-schedule-ep-${id}-real`);
-    const latestEp = epInput ? epInput.value : null;
+    const latestEp = epInput ? epInput.value : 'Tidak Diketahui';
 
-    animeList.push({
-      id,
-      title,
-      link,
-      latestEp
-    });
+    list.push({ id, title, link, latestEp });
   });
+console.log(`✅ Total anime ditemukan di halaman ini: ${animeList.length}`);
 
-  return animeList;
+  return list;
 });
 
 
