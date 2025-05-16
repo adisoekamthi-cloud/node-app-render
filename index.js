@@ -1,7 +1,6 @@
 const express = require('express');
 const app = express();
-
-const { scrapeKuramanime } = require('./scraper'); // Import fungsi dari scraper.js
+const { scrapeKuramanime } = require('./scraper');
 
 app.get('/run', async (req, res) => {
   if (req.query.token !== process.env.SECRET_TOKEN) {
@@ -17,10 +16,5 @@ app.get('/run', async (req, res) => {
   }
 });
 
-
-
-// Gunakan PORT dari environment Railway
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`🚀 Server berjalan di port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Server berjalan di port ${PORT}`));
