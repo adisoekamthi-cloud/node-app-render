@@ -135,12 +135,17 @@ class BrowserManager {
 }
 
 async function processEpisode(browserManager, anime, matched, ep, processingId) {
-  const epPage = await browserManager.newPage();
+  let epPage;
   try {
+    epPage = await browserManager.newPage();
     console.log(`     [${processingId}] Loading episode page...`);
     await epPage.goto(ep.link, { waitUntil: CONFIG.waitUntil, timeout: CONFIG.timeout });
+
     console.log(`     [${processingId}] Looking for download links...`);
     await epPage.waitForSelector('#animeDownloadLink', { timeout: 30000 });
+
+    // Cek apakah page masih terbuka
+    if (epPage.isClosed()) throw new Error('Page closed unexpectedly');
 
     const downloadData = await epPage.evaluate(() => {
       const container = document.querySelector('#animeDownloadLink');
@@ -237,25 +242,30 @@ async function processEpisode(browserManager, anime, matched, ep, processingId) 
     console.error(`     ❌ [${processingId}] Processing failed:`, error.message);
     throw error;
   } finally {
-    await browserManager.closePage(epPage);
+    if (epPage && !epPage.isClosed()) {
+      try {
+        await epPage.close();
+      } catch (e) {
+        console.error(`Error closing page [${processingId}]:`, e.message);
+      }
+    }
+    // Delay setelah tutup page untuk stabilitas browser
     await new Promise(resolve => setTimeout(resolve, CONFIG.delayBetweenRequests));
   }
 }
 
 async function scrapeKuramanime() {
-  const browserManager = new BrowserManager();
+  let browserManager = new BrowserManager();
+  await browserManager.launch();
+
   try {
     console.log('🚀 Starting scraping process...');
-    await browserManager.launch();
-
-    console.log('🔍 Fetching local titles...');
     const localTitles = await getLocalTitles();
     if (localTitles.length === 0) {
       console.log('❌ No local titles found');
       return;
     }
 
-    console.log('🌐 Fetching anime list...');
     const animeList = await withRetry(async () => {
       const page = await browserManager.newPage();
       try {
@@ -318,12 +328,10 @@ async function scrapeKuramanime() {
                 console.error(`   ❌ Error processing episode ${ep.episode}:`, epErr.message);
               }
             }
-
           } finally {
             await browserManager.closePage(animePage);
           }
         }, `anime ${anime.title}`, CONFIG.maxRetries);
-
       } catch (e) {
         console.error(`❌ Failed processing anime ${anime.title}:`, e.message);
       }
