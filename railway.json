@@ -1,0 +1,8 @@
+{
+  "jobs": {
+    "scrapeKuramanime": {
+      "schedule": "*/10 * * * *",
+      "command": "node scraper.js"
+    }
+  }
+}
