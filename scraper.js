@@ -214,48 +214,50 @@ async function scrapeKuramanime() {
         return result;
       });
 
-      let url_480 = '', url_720 = '', url_1080 = '', url_1440 = '', url_2160 = '';
+      let url_360 = '', url_480 = '', url_720 = '', url_1080 = '', url_1440 = '', url_2160 = '';
 
-      if (!pixeldrainLinks) {
-        console.log('     - Tidak ada link pixeldrain ditemukan');
-      } else {
-        for (const [quality, links] of Object.entries(pixeldrainLinks)) {
-          const convertedLinks = links.map(rawUrl => convertPixeldrainUrl(rawUrl) || rawUrl);
-          console.log(`     ▶ ${quality}:`);
-          convertedLinks.forEach(link => console.log(`       • ${link}`));
+if (!pixeldrainLinks || Object.values(pixeldrainLinks).every(v => !v)) {
+  console.log('     - Tidak ada link pixeldrain ditemukan di Extra 1');
+} else {
+  for (const [quality, rawUrl] of Object.entries(pixeldrainLinks)) {
+    if (!rawUrl) continue;
 
-          if (quality === '360p') url_480 = convertedLinks[0];
-          if (quality === '480p') url_480 = convertedLinks[0];
-          if (quality === '720p') url_720 = convertedLinks[0];
-          if (quality === '1080p') url_1080 = convertedLinks[0];
-          if (quality === '1440p') url_1440 = convertedLinks[0];
-          if (quality === '2160p') url_2160 = convertedLinks[0];
-        }
+    const converted = convertPixeldrainUrl(rawUrl) || rawUrl;
+    console.log(`     ▶ ${quality}: ${converted}`);
 
-        const fileName = `${anime.title} episode ${episode.episode}`;
-        const episodeNumber = parseInt(episode.episode.replace(/[^\d]/g, ''), 10);
-        const title = `${anime.title} `;
+    if (quality === '360p') url_360 = converted;
+    if (quality === '480p') url_480 = converted;
+    if (quality === '720p') url_720 = converted;
+    if (quality === '1080p') url_1080 = converted;
+    if (quality === '1440p') url_1440 = converted;
+    if (quality === '2160p') url_2160 = converted;
+  }
 
-        try {
-          const insertRes = await axios.post('https://app.ciptakode.my.id/insertEpisode.php', {
-            content_id: matched.content_id,
-            file_name: fileName,
-            episode_number: episodeNumber,
-            time: moment().format('YYYY-MM-DD HH:mm:ss'),
-            view: 0,
-            url_480,
-            url_720,
-            url_1080,
-            url_1440,
-            url_2160,
-            title
-          });
+  const fileName = `${anime.title} episode ${episode.episode}`;
+  const episodeNumber = parseInt(episode.episode.replace(/[^\d]/g, ''), 10);
+  const title = `${anime.title} `;
 
-          console.log('     ✅ Data berhasil dikirim:', insertRes.data);
-        } catch (err) {
-          console.log('     ❌ Gagal kirim ke server:', err.message);
-        }
-      }
+  try {
+    const insertRes = await axios.post('https://app.ciptakode.my.id/insertEpisode.php', {
+      content_id: matched.content_id,
+      file_name: fileName,
+      episode_number: episodeNumber,
+      time: moment().format('YYYY-MM-DD HH:mm:ss'),
+      view: 0,
+      url_480: url_480 || url_360 || '',
+      url_720,
+      url_1080,
+      url_1440,
+      url_2160,
+      title
+    });
+
+    console.log('     ✅ Data berhasil dikirim:', insertRes.data);
+  } catch (err) {
+    console.log('     ❌ Gagal kirim ke server:', err.message);
+  }
+}
+
     }
   }
 
