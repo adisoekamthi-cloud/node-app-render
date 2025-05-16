@@ -7,6 +7,7 @@ app.get('/run', async (req, res) => {
     return res.status(403).send('Unauthorized');
   }
 
+  
   try {
     await scrapeKuramanime();
     res.send('✅ Scraping berhasil dijalankan');
