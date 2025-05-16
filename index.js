@@ -175,6 +175,7 @@ async function scrapeKuramanime() {
                 const convertedLinks = links.map(rawUrl => convertPixeldrainUrl(rawUrl) || rawUrl);
                 console.log(`     ▶ ${quality}:`);
                 convertedLinks.forEach(link => console.log(`       • ${link}`));
+            
 
                 if (/480p/i.test(quality) && convertedLinks.length > 0) url_480 = convertedLinks[0];
                 if (/720p/i.test(quality) && convertedLinks.length > 0) url_720 = convertedLinks[0];
