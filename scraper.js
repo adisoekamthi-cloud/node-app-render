@@ -154,7 +154,7 @@ async function scrapeKuramanime() {
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = htmlContent;
 
-        const epLinks = Array.from(tempDiv.querySelectorAll('a.btn-danger'));
+        const epLinks = Array.from(tempDiv.querySelectorAll('a.mt-2'));
         if (epLinks.length === 0) return null;
 
         const lastEp = epLinks[epLinks.length - 1];
@@ -184,24 +184,29 @@ async function scrapeKuramanime() {
         if (!container) return null;
 
         const result = {};
-        const headers = Array.from(container.querySelectorAll('h6.font-weight-bold')).filter(h =>
-          /mp4 480p/i.test(h.innerText) || /mp4 720p/i.test(h.innerText)
-        );
+        const headers = container.querySelectorAll('h6.font-weight-bold');
 
         headers.forEach(header => {
-          const qualityText = header.innerText.trim();
-          let sib = header.nextElementSibling;
+          const qualityText = header.innerText.trim().toLowerCase();
+          let current = header.nextElementSibling;
           const urls = [];
 
-          while (sib && sib.tagName.toLowerCase() !== 'h6') {
-            if (sib.tagName.toLowerCase() === 'a' && sib.href.includes('pixeldrain.com')) {
-              urls.push(sib.href);
+          while (current && !current.matches('h6.font-weight-bold')) {
+            if (current.tagName.toLowerCase() === 'a') {
+              const href = current.href;
+              if (href.includes('pixeldrain.com')) {
+                urls.push(href);
+              }
             }
-            sib = sib.nextElementSibling;
+            current = current.nextElementSibling;
           }
 
           if (urls.length > 0) {
-            result[qualityText] = urls;
+            const match = qualityText.match(/(\d{3,4}p)/);
+            if (match) {
+              const key = match[1];
+              result[key] = urls;
+            }
           }
         });
 
@@ -218,8 +223,12 @@ async function scrapeKuramanime() {
           console.log(`     ▶ ${quality}:`);
           convertedLinks.forEach(link => console.log(`       • ${link}`));
 
-          if (/480p/i.test(quality)) url_480 = convertedLinks[0];
-          if (/720p/i.test(quality)) url_720 = convertedLinks[0];
+          if (quality === '360p') url_480 = convertedLinks[0];
+          if (quality === '480p') url_480 = convertedLinks[0];
+          if (quality === '720p') url_720 = convertedLinks[0];
+          if (quality === '1080p') url_1080 = convertedLinks[0];
+          if (quality === '1440p') url_1440 = convertedLinks[0];
+          if (quality === '2160p') url_2160 = convertedLinks[0];
         }
 
         const fileName = `${anime.title} episode ${episode.episode}`;
