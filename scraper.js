@@ -103,21 +103,31 @@ async function scrapeKuramanime() {
 
       try {
         await page.goto(anime.link, { waitUntil: 'networkidle2', timeout: 60000 });
-        await page.waitForSelector('#animeEpisodes a.ep-button', { timeout: 15000 });
+        await page.waitForSelector('#episodeLists', { timeout: 15000 });
       } catch (e) {
         console.log('   - Gagal menemukan daftar episode:', e.message);
         continue;
       }
 
       const episode = await page.evaluate(() => {
-        const epButtons = Array.from(document.querySelectorAll('#animeEpisodes a.ep-button'));
-        const epElement = epButtons[epButtons.length - 1];
-        if (!epElement) return null;
-        return {
-          episode: epElement.innerText.trim().replace(/\s+/g, ' '),
-          link: epElement.href
-        };
-      });
+  const epContainer = document.querySelector('#episodeLists');
+  if (!epContainer) return null;
+
+  const htmlContent = epContainer.getAttribute('data-content');
+  if (!htmlContent) return null;
+
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = htmlContent;
+
+  const epLinks = Array.from(tempDiv.querySelectorAll('a.btn-danger'));
+  if (epLinks.length === 0) return null;
+
+  const lastEp = epLinks[epLinks.length - 1];
+  return {
+    episode: lastEp.textContent.trim().replace(/\s+/g, ' '),
+    link: lastEp.href
+  };
+});
 
       if (!episode) {
         console.log('   - Tidak ada episode ditemukan.');
