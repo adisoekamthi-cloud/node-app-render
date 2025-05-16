@@ -164,6 +164,7 @@ async function scrapeKuramanime() {
         // ✅ Gabungkan judul + nomor episode
         const fileName = `${anime.title}  ${ep.episode}`;
         const episodeNumber = parseInt(ep.episode.replace(/[^\d]/g, ''), 10);
+        const title = `${anime.title}`;
       
         try {
           const insertRes = await axios.post('https://app.ciptakode.my.id/insertEpisode.php', {
@@ -176,7 +177,8 @@ async function scrapeKuramanime() {
             url_720,
             url_1080,
             url_1440,
-            url_2160
+            url_2160,
+            title : title
           });
 
         console.log('     ✅ Data berhasil dikirim:', insertRes.data);
