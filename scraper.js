@@ -27,6 +27,7 @@ function convertPixeldrainUrl(url) {
 }
 
 
+
 // Enhanced local titles fetching with caching
 let localTitlesCache = null;
 let lastFetchTime = 0;
@@ -156,67 +157,12 @@ class BrowserManager {
 }
 
 // Comprehensive download link extractor
-async function extractDownloadLinks(page) {
-  return await page.evaluate(() => {
-    const result = {
-      pixeldrain: {},
-      other: {}
-    };
-
-    const container = document.querySelector('#animeDownloadLink');
-    if (!container) return null;
-
-    // Process all child nodes to handle various structures
-    let currentSection = null;
-    
-    Array.from(container.childNodes).forEach(node => {
-      // Detect section headers
-      if (node.nodeName === 'H6' && node.classList?.contains('font-weight-bold')) {
-        const text = node.textContent.trim();
-        currentSection = {
-          name: text,
-          resolution: text.match(/(\d+p)/i)?.[0] || 'unknown',
-          isHardsub: text.toLowerCase().includes('hardsub'),
-          links: []
-        };
-        return;
-      }
-
-      // Process links under current section
-      if (currentSection && node.nodeName === 'A' && node.href) {
-        const link = {
-          url: node.href,
-          label: node.textContent.trim() || 'link',
-          type: node.href.includes('pixeldrain.com') ? 'pixeldrain' : 'other'
-        };
-        
-        currentSection.links.push(link);
-        
-        // Organize by service
-        if (link.type === 'pixeldrain') {
-          if (!result.pixeldrain[currentSection.resolution]) {
-            result.pixeldrain[currentSection.resolution] = [];
-          }
-          result.pixeldrain[currentSection.resolution].push(link);
-        } else {
-          if (!result.other[currentSection.resolution]) {
-            result.other[currentSection.resolution] = [];
-          }
-          result.other[currentSection.resolution].push(link);
-        }
-      }
-    });
-
-    return result;
-  });
-}
-
-// Enhanced episode processor
+// Enhanced episode processor with fixed extractDownloadLinks
 async function processEpisode(browserManager, anime, matched, ep, processingId) {
   const epPage = await browserManager.newPage();
   try {
     console.log(`     [${processingId}] Loading episode page...`);
-    
+
     await epPage.goto(ep.link, {
       waitUntil: CONFIG.waitUntil,
       timeout: CONFIG.timeout
@@ -226,9 +172,56 @@ async function processEpisode(browserManager, anime, matched, ep, processingId) 
     console.log(`     [${processingId}] Looking for download links...`);
     await epPage.waitForSelector('#animeDownloadLink', { timeout: 30000 });
 
-    // Extract all download links
-    const downloadData = await extractDownloadLinks(epPage);
-    if (!downloadData || !downloadData.pixeldrain) {
+    // Extract all download links within page context
+    const downloadData = await epPage.evaluate(() => {
+      const container = document.querySelector('#animeDownloadLink');
+      if (!container) return null;
+
+      const result = {
+        pixeldrain: {},
+        other: {}
+      };
+
+      let currentSection = null;
+
+      Array.from(container.childNodes).forEach(node => {
+        if (node.nodeName === 'H6' && node.classList?.contains('font-weight-bold')) {
+          const text = node.textContent.trim();
+          currentSection = {
+            name: text,
+            resolution: text.match(/(\d+p)/i)?.[0] || 'unknown',
+            isHardsub: text.toLowerCase().includes('hardsub'),
+            links: []
+          };
+          return;
+        }
+
+        if (currentSection && node.nodeName === 'A' && node.href) {
+          const rawUrl = node.href;
+          const link = {
+            url: rawUrl,
+            label: node.textContent.trim() || 'link',
+            type: rawUrl.includes('pixeldrain.com') ? 'pixeldrain' : 'other'
+          };
+
+          if (link.type === 'pixeldrain') {
+            if (!result.pixeldrain[currentSection.resolution]) {
+              result.pixeldrain[currentSection.resolution] = [];
+            }
+            result.pixeldrain[currentSection.resolution].push(link);
+          } else {
+            if (!result.other[currentSection.resolution]) {
+              result.other[currentSection.resolution] = [];
+            }
+            result.other[currentSection.resolution].push(link);
+          }
+        }
+      });
+
+      return result;
+    });
+
+    if (!downloadData || Object.keys(downloadData).length === 0) {
       console.log(`     ❌ [${processingId}] No download links found`);
       return null;
     }
@@ -236,15 +229,14 @@ async function processEpisode(browserManager, anime, matched, ep, processingId) 
     // Process PixelDrain links first
     let url_480 = '';
     let url_720 = '';
-    
+
     console.log(`     [${processingId}] Found download links:`);
-    
-    // Process by resolution
-    for (const [resolution, links] of Object.entries(downloadData.pixeldrain)) {
+
+    for (const [resolution, links] of Object.entries(downloadData.pixeldrain || {})) {
       if (links.length > 0) {
         const convertedUrl = convertPixeldrainUrl(links[0].url);
         console.log(`       ▶ ${resolution}: ${convertedUrl}`);
-        
+
         if (resolution === '480p') url_480 = convertedUrl;
         if (resolution === '720p') url_720 = convertedUrl;
       }
@@ -253,10 +245,10 @@ async function processEpisode(browserManager, anime, matched, ep, processingId) 
     // Fallback to other links if no PixelDrain found
     if (!url_480 || !url_720) {
       console.log(`     [${processingId}] Checking alternative links...`);
-      for (const [resolution, links] of Object.entries(downloadData.other)) {
+      for (const [resolution, links] of Object.entries(downloadData.other || {})) {
         if (links.length > 0) {
           console.log(`       ▶ ${resolution}: ${links[0].url} (${links[0].type})`);
-          
+
           if (resolution === '480p' && !url_480) url_480 = links[0].url;
           if (resolution === '720p' && !url_720) url_720 = links[0].url;
         }
@@ -298,6 +290,7 @@ async function processEpisode(browserManager, anime, matched, ep, processingId) 
     await new Promise(resolve => setTimeout(resolve, CONFIG.delayBetweenRequests));
   }
 }
+
 
 // Main scraping function
 async function scrapeKuramanime() {
