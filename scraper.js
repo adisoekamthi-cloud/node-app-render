@@ -2,7 +2,6 @@ const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const axios = require('axios');
 const moment = require('moment');
-const { v4: uuidv4 } = require('uuid');
 
 puppeteer.use(StealthPlugin());
 
@@ -45,6 +44,11 @@ async function withRetry(fn, maxRetries = CONFIG.maxRetries, operationName = 'op
     }
   }
   throw lastError;
+}
+
+// Simple ID generator replacement for uuid
+function generateSimpleId() {
+  return Math.random().toString(36).substring(2, 8);
 }
 
 async function scrapeKuramanime() {
@@ -137,7 +141,7 @@ async function scrapeKuramanime() {
         console.log(`   📺 Ditemukan ${episodes.length} episode`);
 
         for (const [index, ep] of episodes.entries()) {
-          const processingId = uuidv4().substring(0, 6);
+          const processingId = generateSimpleId();
           console.log(`   ${index + 1}/${episodes.length} [${processingId}] Memproses episode: ${ep.episode}`);
 
           try {
