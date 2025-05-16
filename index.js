@@ -4,13 +4,19 @@ const app = express();
 const { scrapeKuramanime } = require('./scraper'); // Import fungsi dari scraper.js
 
 app.get('/run', async (req, res) => {
+  if (req.query.token !== process.env.SECRET_TOKEN) {
+    return res.status(403).send('Unauthorized');
+  }
+
   try {
     await scrapeKuramanime();
-    res.send('✅ Scraping selesai!');
+    res.send('✅ Scraping berhasil dijalankan');
   } catch (err) {
-    res.status(500).send('❌ Gagal menjalankan scraping: ' + err.message);
+    console.error(err);
+    res.status(500).send('❌ Gagal scraping');
   }
 });
+
 
 
 // Gunakan PORT dari environment Railway
