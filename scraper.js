@@ -14,7 +14,6 @@ function convertPixeldrainUrl(url) {
   return null;
 }
 
-
 async function getLocalTitles() {
   try {
     const response = await axios.get('https://app.ciptakode.my.id/getData.php');
@@ -52,7 +51,7 @@ async function scrapeKuramanime() {
   });
 
   const page = await browser.newPage();
-  wait page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36');
+  await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36');
   const baseUrl = 'https://v6.kuramanime.run/quick/ongoing?order_by=updated&page=1';
 
   try {
@@ -140,42 +139,43 @@ async function scrapeKuramanime() {
         return result;
       });
 
-    let url_480 = '', url_720 = '', url_1080 = '', url_1440 = '', url_2160 = '';
+      let url_480 = '', url_720 = '', url_1080 = '', url_1440 = '', url_2160 = '';
 
-    if (!pixeldrainLinks) {
-      console.log('     - Tidak ada link pixeldrain ditemukan');
-    } else {
-      for (const [quality, links] of Object.entries(pixeldrainLinks)) {
-        const convertedLinks = links.map(rawUrl => convertPixeldrainUrl(rawUrl) || rawUrl);
-        console.log(`     ▶ ${quality}:`);
-        convertedLinks.forEach(link => console.log(`       • ${link}`));
+      if (!pixeldrainLinks) {
+        console.log('     - Tidak ada link pixeldrain ditemukan');
+      } else {
+        for (const [quality, links] of Object.entries(pixeldrainLinks)) {
+          const convertedLinks = links.map(rawUrl => convertPixeldrainUrl(rawUrl) || rawUrl);
+          console.log(`     ▶ ${quality}:`);
+          convertedLinks.forEach(link => console.log(`       • ${link}`));
 
-        if (/480p/i.test(quality)) url_480 = convertedLinks[0];
-        if (/720p/i.test(quality)) url_720 = convertedLinks[0];
-      }
+          if (/480p/i.test(quality)) url_480 = convertedLinks[0];
+          if (/720p/i.test(quality)) url_720 = convertedLinks[0];
+        }
 
-      const fileName = `${anime.title} episode ${episode.episode}`;
-      const episodeNumber = parseInt(episode.episode.replace(/[^\d]/g, ''), 10);
-      const title = `${anime.title} `;
+        const fileName = `${anime.title} episode ${ep.episode}`;
+        const episodeNumber = parseInt(ep.episode.replace(/[^\d]/g, ''), 10);
+        const title = `${anime.title} `;
 
-      try {
-        const insertRes = await axios.post('https://app.ciptakode.my.id/insertEpisode.php', {
-          content_id: matched.content_id,
-          file_name: fileName,
-          episode_number: episodeNumber,
-          time: moment().format('YYYY-MM-DD HH:mm:ss'),
-          view: 0,
-          url_480,
-          url_720,
-          url_1080,
-          url_1440,
-          url_2160,
-          title
-        });
+        try {
+          const insertRes = await axios.post('https://app.ciptakode.my.id/insertEpisode.php', {
+            content_id: matched.content_id,
+            file_name: fileName,
+            episode_number: episodeNumber,
+            time: moment().format('YYYY-MM-DD HH:mm:ss'),
+            view: 0,
+            url_480,
+            url_720,
+            url_1080,
+            url_1440,
+            url_2160,
+            title
+          });
 
-        console.log('     ✅ Data berhasil dikirim:', insertRes.data);
-      } catch (err) {
-        console.log('     ❌ Gagal kirim ke server:', err.message);
+          console.log('     ✅ Data berhasil dikirim:', insertRes.data);
+        } catch (err) {
+          console.log('     ❌ Gagal kirim ke server:', err.message);
+        }
       }
     }
   }
