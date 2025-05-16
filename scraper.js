@@ -191,3 +191,4 @@ async function scrapeKuramanime() {
 scrapeKuramanime().catch(e => {
   console.error('Error di fungsi utama:', e);
 });
+module.exports = { scrapeKuramanime };
