@@ -81,7 +81,7 @@ async function scrapeKuramanime() {
   const page = await browser.newPage();
   await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36');
 
-  const hariIni = moment().format('dddd').toLowerCase(); // contoh: 'friday'
+  const hariIni = moment().format('dddd').toLowerCase();
   const scheduledDay = dayMap[hariIni];
 
   for (let i = 1; i <= 3; i++) {
@@ -91,41 +91,37 @@ async function scrapeKuramanime() {
     try {
       await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
       await autoScroll(page);
-     await new Promise(resolve => setTimeout(resolve, 3000));
-
-      await page.screenshot({ path: `screenshot-page-${i}.png`, fullPage: true });
+      await new Promise(resolve => setTimeout(resolve, 3000));
     } catch (e) {
       console.error(`❌ Gagal akses halaman ${i}:`, e.message);
       continue;
     }
 
-   const animeList = await page.evaluate(() => {
-  const items = Array.from(document.querySelectorAll('.product__item'));
-  const list = [];
+    const animeList = await page.evaluate(() => {
+      const items = Array.from(document.querySelectorAll('.product__item'));
+      const list = [];
 
-  items.forEach(item => {
-    const linkElem = item.querySelector('h5 a');
-    if (!linkElem) return;
+      items.forEach(item => {
+        const linkElem = item.querySelector('h5 a');
+        if (!linkElem) return;
 
-    const link = linkElem.href;
-    const title = linkElem.textContent.trim();
+        const link = linkElem.href;
+        const title = linkElem.textContent.trim();
 
-    // Ekstrak ID dari URL
-    const match = link.match(/\/anime\/(\d+)\//);
-    const id = match ? match[1] : null;
-    if (!id) return;
+        const match = link.match(/\/anime\/(\d+)\//);
+        const id = match ? match[1] : null;
+        if (!id) return;
 
-    // Cari input hidden yang berisi episode (mungkin berada di luar item)
-    const epInput = document.querySelector(`input.actual-schedule-ep-${id}-real`);
-    const latestEp = epInput ? epInput.value : 'Tidak Diketahui';
+        const epInput = document.querySelector(`input.actual-schedule-ep-${id}-real`);
+        const latestEp = epInput ? epInput.value : 'Tidak Diketahui';
 
-    list.push({ id, title, link, latestEp });
-  });
-console.log(`✅ Total anime ditemukan di halaman ini: ${animeList.length}`);
+        list.push({ id, title, link, latestEp });
+      });
 
-  return list;
-});
+      return list;
+    });
 
+    console.log(`✅ Total anime ditemukan di halaman ${i}: ${animeList.length}`);
 
     if (animeList.length === 0) {
       console.log(`❌ Tidak ada data di halaman ${i}, lewati...`);
