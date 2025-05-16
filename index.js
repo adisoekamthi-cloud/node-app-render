@@ -4,13 +4,14 @@ const moment = require('moment');
 const express = require('express');
 const app = express();
 
+const port = process.env.PORT || 3000;
+
 app.get('/', (req, res) => {
   res.send('Server Node.js aktif!');
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server berjalan di port ${PORT}`);
+app.listen(port, () => {
+  console.log(`Server berjalan di port ${port}`);
 });
 
 function convertPixeldrainUrl(url) {
@@ -50,21 +51,33 @@ async function scrapeKuramanime() {
   });
   const page = await browser.newPage();
 
-  await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36');
+  await page.setUserAgent(
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36'
+  );
+
   const baseUrl = 'https://v6.kuramanime.run/quick/ongoing?order_by=updated';
 
-  await page.goto(baseUrl, { waitUntil: 'networkidle2' });
-  await page.waitForSelector('.product__item');
+  try {
+    await page.goto(baseUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+    await page.waitForSelector('.product__item', { timeout: 60000 });
+  } catch (err) {
+    console.error('Gagal load halaman atau selector tidak ditemukan:', err.message);
+    await page.screenshot({ path: 'error-screenshot.png' });
+    await browser.close();
+    return;
+  }
 
   const animeList = await page.evaluate(() => {
     const items = Array.from(document.querySelectorAll('.product__item'));
-    return items.map(item => {
-      const linkElem = item.querySelector('h5 a');
-      return {
-        title: linkElem ? linkElem.textContent.trim() : 'Tidak ada judul',
-        link: linkElem ? linkElem.href : null
-      };
-    }).filter(a => a.link !== null);
+    return items
+      .map(item => {
+        const linkElem = item.querySelector('h5 a');
+        return {
+          title: linkElem ? linkElem.textContent.trim() : 'Tidak ada judul',
+          link: linkElem ? linkElem.href : null
+        };
+      })
+      .filter(a => a.link !== null);
   });
 
   for (const anime of animeList) {
@@ -76,7 +89,7 @@ async function scrapeKuramanime() {
     console.log(`\n🎬 Judul: ${anime.title}`);
     console.log(`🆔 content_id: ${matched.content_id}`);
 
-    await page.goto(anime.link, { waitUntil: 'networkidle2' });
+    await page.goto(anime.link, { waitUntil: 'networkidle2', timeout: 60000 });
 
     try {
       await page.waitForSelector('#animeEpisodes a.ep-button', { timeout: 10000 });
@@ -87,7 +100,8 @@ async function scrapeKuramanime() {
 
     const episode = await page.evaluate(() => {
       const epButtons = Array.from(document.querySelectorAll('#animeEpisodes a.ep-button'));
-      const epElement = epButtons[epButtons.length - 1];
+      const epElement = epButtons[epButtons.length - 1]; // episode terbaru
+
       if (!epElement) return null;
 
       return {
@@ -102,7 +116,7 @@ async function scrapeKuramanime() {
     }
 
     console.log(`   📺 Episode Terbaru: ${episode.episode}`);
-    await page.goto(episode.link, { waitUntil: 'networkidle2' });
+    await page.goto(episode.link, { waitUntil: 'networkidle2', timeout: 60000 });
 
     try {
       await page.waitForSelector('#animeDownloadLink', { timeout: 10000 });
@@ -187,11 +201,6 @@ async function scrapeKuramanime() {
   await browser.close();
 }
 
-// Jalankan scraping sekali saat server start
-(async () => {
-  try {
-    await scrapeKuramanime();
-  } catch (error) {
-    console.error('Error saat scraping:', error);
-  }
-})();
+scrapeKuramanime().catch(err => {
+  console.error('Error saat scraping:', err);
+});
