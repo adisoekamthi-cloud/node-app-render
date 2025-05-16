@@ -144,26 +144,25 @@ async function scrapeKuramanime() {
         continue;
       }
 
-            const episode = await page.evaluate(() => {
+      const episode = await page.evaluate(() => {
         const epElement = document.querySelector('#episodeLists');
         if (!epElement) return null;
-      
+
         const contentHtml = epElement.getAttribute('data-content');
         if (!contentHtml) return null;
-      
+
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = contentHtml;
-      
+
         const epLinks = Array.from(tempDiv.querySelectorAll('a.btn-danger'));
         if (epLinks.length === 0) return null;
-      
+
         const lastEp = epLinks[epLinks.length - 1];
         return {
           episode: lastEp.textContent.trim().replace(/\s+/g, ' '),
           link: lastEp.href
         };
       });
-
 
       if (!episode) {
         console.log('   - Tidak ada episode ditemukan.');
@@ -181,32 +180,38 @@ async function scrapeKuramanime() {
       }
 
       const pixeldrainLinks = await page.evaluate(() => {
-        const container = document.querySelector('#animeDownloadLink');
-        if (!container) return null;
+        const result = {
+          '360p': null,
+          '480p': null,
+          '720p': null,
+          '1080p': null,
+          '1440p': null,
+          '2160p': null
+        };
 
-        const result = {};
-        const headers = container.querySelectorAll('h6.font-weight-bold');
+        const sectionTitles = document.querySelectorAll('#animeDownloadLink h6');
 
-        headers.forEach(header => {
-          const qualityText = header.innerText.trim().toLowerCase();
-          let current = header.nextElementSibling;
-          const urls = [];
+        sectionTitles.forEach(title => {
+          const sectionText = title.textContent.toLowerCase();
+          const parent = title.parentElement;
 
-          while (current && !current.matches('h6.font-weight-bold')) {
-            if (current.tagName.toLowerCase() === 'a') {
-              const href = current.href;
-              if (href.includes('pixeldrain.com')) {
-                urls.push(href);
-              }
-            }
-            current = current.nextElementSibling;
-          }
+          let resKey = null;
+          if (sectionText.includes('360p')) resKey = '360p';
+          else if (sectionText.includes('480p')) resKey = '480p';
+          else if (sectionText.includes('720p')) resKey = '720p';
+          else if (sectionText.includes('1080p')) resKey = '1080p';
+          else if (sectionText.includes('1440p')) resKey = '1440p';
+          else if (sectionText.includes('2160p')) resKey = '2160p';
 
-          if (urls.length > 0) {
-            const match = qualityText.match(/(\d{3,4}p)/);
-            if (match) {
-              const key = match[1];
-              result[key] = urls;
+          if (!resKey || !parent) return;
+
+          const links = parent.querySelectorAll('a');
+          for (const a of links) {
+            const isExtra1 = a.textContent.toLowerCase().includes('extra 1');
+            const isPixeldrain = a.href.includes('pixeldrain.com');
+            if (isExtra1 && isPixeldrain) {
+              result[resKey] = a.href;
+              break;
             }
           }
         });
@@ -216,48 +221,46 @@ async function scrapeKuramanime() {
 
       let url_360 = '', url_480 = '', url_720 = '', url_1080 = '', url_1440 = '', url_2160 = '';
 
-if (!pixeldrainLinks || Object.values(pixeldrainLinks).every(v => !v)) {
-  console.log('     - Tidak ada link pixeldrain ditemukan di Extra 1');
-} else {
-  for (const [quality, rawUrl] of Object.entries(pixeldrainLinks)) {
-    if (!rawUrl) continue;
+      if (!pixeldrainLinks || Object.values(pixeldrainLinks).every(v => !v)) {
+        console.log('     - Tidak ada link pixeldrain ditemukan di Extra 1');
+      } else {
+        for (const [quality, rawUrl] of Object.entries(pixeldrainLinks)) {
+          if (!rawUrl) continue;
+          const converted = convertPixeldrainUrl(rawUrl) || rawUrl;
+          console.log(`     ▶ ${quality}: ${converted}`);
 
-    const converted = convertPixeldrainUrl(rawUrl) || rawUrl;
-    console.log(`     ▶ ${quality}: ${converted}`);
+          if (quality === '360p') url_360 = converted;
+          if (quality === '480p') url_480 = converted;
+          if (quality === '720p') url_720 = converted;
+          if (quality === '1080p') url_1080 = converted;
+          if (quality === '1440p') url_1440 = converted;
+          if (quality === '2160p') url_2160 = converted;
+        }
 
-    if (quality === '360p') url_360 = converted;
-    if (quality === '480p') url_480 = converted;
-    if (quality === '720p') url_720 = converted;
-    if (quality === '1080p') url_1080 = converted;
-    if (quality === '1440p') url_1440 = converted;
-    if (quality === '2160p') url_2160 = converted;
-  }
+        const fileName = `${anime.title} episode ${episode.episode}`;
+        const episodeNumber = parseInt(episode.episode.replace(/[^\d]/g, ''), 10);
+        const title = `${anime.title} `;
 
-  const fileName = `${anime.title} episode ${episode.episode}`;
-  const episodeNumber = parseInt(episode.episode.replace(/[^\d]/g, ''), 10);
-  const title = `${anime.title} `;
+        try {
+          const insertRes = await axios.post('https://app.ciptakode.my.id/insertEpisode.php', {
+            content_id: matched.content_id,
+            file_name: fileName,
+            episode_number: episodeNumber,
+            time: moment().format('YYYY-MM-DD HH:mm:ss'),
+            view: 0,
+            url_480: url_480 || url_360 || '',
+            url_720,
+            url_1080,
+            url_1440,
+            url_2160,
+            title
+          });
 
-  try {
-    const insertRes = await axios.post('https://app.ciptakode.my.id/insertEpisode.php', {
-      content_id: matched.content_id,
-      file_name: fileName,
-      episode_number: episodeNumber,
-      time: moment().format('YYYY-MM-DD HH:mm:ss'),
-      view: 0,
-      url_480: url_480 || url_360 || '',
-      url_720,
-      url_1080,
-      url_1440,
-      url_2160,
-      title
-    });
-
-    console.log('     ✅ Data berhasil dikirim:', insertRes.data);
-  } catch (err) {
-    console.log('     ❌ Gagal kirim ke server:', err.message);
-  }
-}
-
+          console.log('     ✅ Data berhasil dikirim:', insertRes.data);
+        } catch (err) {
+          console.log('     ❌ Gagal kirim ke server:', err.message);
+        }
+      }
     }
   }
 
