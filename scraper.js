@@ -159,8 +159,7 @@ class BrowserManager {
 async function extractDownloadLinks(page) {
   return await page.evaluate(() => {
     const result = {
-      pixeldrain: {},
-      other: {}
+      pixeldrain: {}
     };
 
     const container = document.querySelector('#animeDownloadLink');
@@ -249,19 +248,7 @@ async function processEpisode(browserManager, anime, matched, ep, processingId) 
         if (resolution === '720p') url_720 = convertedUrl;
       }
     }
-
-    // Fallback to other links if no PixelDrain found
-    if (!url_480 || !url_720) {
-      console.log(`     [${processingId}] Checking alternative links...`);
-      for (const [resolution, links] of Object.entries(downloadData.other)) {
-        if (links.length > 0) {
-          console.log(`       ▶ ${resolution}: ${links[0].url} (${links[0].type})`);
-          
-          if (resolution === '480p' && !url_480) url_480 = links[0].url;
-          if (resolution === '720p' && !url_720) url_720 = links[0].url;
-        }
-      }
-    }
+   
 
     // Prepare data for API
     const fileName = `${anime.title} episode ${ep.episode}`;
