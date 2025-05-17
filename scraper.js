@@ -156,6 +156,7 @@ class BrowserManager {
 }
 
 // Comprehensive download link extractor
+// Simplified download link extractor - only gets PixelDrain links
 async function extractDownloadLinks(page) {
   return await page.evaluate(() => {
     const result = {
@@ -173,36 +174,26 @@ async function extractDownloadLinks(page) {
       if (node.nodeName === 'H6' && node.classList?.contains('font-weight-bold')) {
         const text = node.textContent.trim();
         currentSection = {
-          name: text,
           resolution: text.match(/(\d+p)/i)?.[0] || 'unknown',
-          isHardsub: text.toLowerCase().includes('hardsub'),
           links: []
         };
         return;
       }
 
-      // Process links under current section
-      if (currentSection && node.nodeName === 'A' && node.href) {
+      // Only process PixelDrain links under current section
+      if (currentSection && node.nodeName === 'A' && node.href && node.href.includes('pixeldrain.com')) {
         const link = {
           url: node.href,
-          label: node.textContent.trim() || 'link',
-          type: node.href.includes('pixeldrain.com') ? 'pixeldrain' : 'other'
+          label: node.textContent.trim() || 'link'
         };
         
         currentSection.links.push(link);
         
-        // Organize by service
-        if (link.type === 'pixeldrain') {
-          if (!result.pixeldrain[currentSection.resolution]) {
-            result.pixeldrain[currentSection.resolution] = [];
-          }
-          result.pixeldrain[currentSection.resolution].push(link);
-        } else {
-          if (!result.other[currentSection.resolution]) {
-            result.other[currentSection.resolution] = [];
-          }
-          result.other[currentSection.resolution].push(link);
+        // Organize by resolution
+        if (!result.pixeldrain[currentSection.resolution]) {
+          result.pixeldrain[currentSection.resolution] = [];
         }
+        result.pixeldrain[currentSection.resolution].push(link);
       }
     });
 
@@ -210,8 +201,8 @@ async function extractDownloadLinks(page) {
   });
 }
 
-// Enhanced episode processor
-async function processEpisode(browserManager, anime, matched, ep, processingId) {
+// Process only the latest episode with PixelDrain links
+async function processLatestEpisode(browserManager, anime, matched, ep, processingId) {
   const epPage = await browserManager.newPage();
   try {
     console.log(`     [${processingId}] Loading episode page...`);
@@ -225,29 +216,38 @@ async function processEpisode(browserManager, anime, matched, ep, processingId) 
     console.log(`     [${processingId}] Looking for download links...`);
     await epPage.waitForSelector('#animeDownloadLink', { timeout: 30000 });
 
-    // Extract all download links
+    // Extract only PixelDrain download links
     const downloadData = await extractDownloadLinks(epPage);
-    if (!downloadData || !downloadData.pixeldrain) {
-      console.log(`     ❌ [${processingId}] No download links found`);
+    if (!downloadData || !downloadData.pixeldrain || Object.keys(downloadData.pixeldrain).length === 0) {
+      console.log(`     ❌ [${processingId}] No PixelDrain links found`);
       return null;
     }
 
-    // Process PixelDrain links first
-    let url_480 = '';
-    let url_720 = '';
-    
-    console.log(`     [${processingId}] Found download links:`);
-    
-    // Process by resolution
-    for (const [resolution, links] of Object.entries(downloadData.pixeldrain)) {
-      if (links.length > 0) {
-        const convertedUrl = convertPixeldrainUrl(links[0].url);
-        console.log(`       ▶ ${resolution}: ${convertedUrl}`);
-        
-        if (resolution === '480p') url_480 = convertedUrl;
-        if (resolution === '720p') url_720 = convertedUrl;
-      }
+    // Get the highest resolution available (prioritize 720p then 480p)
+    let bestUrl = '';
+    if (downloadData.pixeldrain['720p'] && downloadData.pixeldrain['720p'].length > 0) {
+      bestUrl = downloadData.pixeldrain['720p'][0].url;
+    } else if (downloadData.pixeldrain['480p'] && downloadData.pixeldrain['480p'].length > 0) {
+      bestUrl = downloadData.pixeldrain['480p'][0].url;
     }
+
+    if (!bestUrl) {
+      console.log(`     ❌ [${processingId}] No valid PixelDrain links found`);
+      return null;
+    }
+
+    const convertedUrl = convertPixeldrainUrl(bestUrl);
+    console.log(`     [${processingId}] Found PixelDrain link: ${convertedUrl}`);
+    
+    return {
+      url: convertedUrl,
+      resolution: bestUrl.includes('720p') ? '720p' : '480p'
+    };
+
+  } finally {
+    await epPage.close();
+  }
+}
    
 
     // Prepare data for API
