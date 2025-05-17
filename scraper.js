@@ -231,3 +231,5 @@ async function scrapeKuramanime() {
         process.exit(1);
     }
 })();
+
+module.exports = { scrapeKuramanime };
