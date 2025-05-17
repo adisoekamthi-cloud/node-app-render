@@ -19,37 +19,12 @@ const CONFIG = {
 
 // Comprehensive URL converter with multiple patterns
 function convertPixeldrainUrl(url) {
-  if (!url) return null;
-  
-  try {
-    const patterns = [
-      // Standard formats
-      /https?:\/\/pixeldrain\.com\/u\/([a-zA-Z0-9]+)/,
-      /https?:\/\/pixeldrain\.com\/d\/([a-zA-Z0-9]+)/,
-      /https?:\/\/pixeldrain\.com\/l\/([a-zA-Z0-9]+)/,
-      /https?:\/\/pixeldrain\.com\/file\/([a-zA-Z0-9]+)/,
-      
-      // API formats
-      /https?:\/\/pixeldrain\.com\/api\/file\/([a-zA-Z0-9]+)/,
-      /https?:\/\/pixeldrain\.com\/api\/filesystem\/([a-zA-Z0-9]+)/,
-      
-      // With parameters
-      /https?:\/\/pixeldrain\.com\/u\/([a-zA-Z0-9]+)\?/,
-      /https?:\/\/pixeldrain\.com\/d\/([a-zA-Z0-9]+)\?/
-    ];
-
-    for (const pattern of patterns) {
-      const match = url.match(pattern);
-      if (match) {
-        return `https://pixeldrain.com/api/file/${match[1]}?download`;
-      }
+    const regex = /https?:\/\/pixeldrain\.com\/[du]\/([a-zA-Z0-9]+)/;
+    const match = url.match(regex);
+    if (match) {
+        return `https://pixeldrain.com/api/filesystem/${match[1]}?attach`;
     }
-    
-    return url; // Return original if no pattern matched but URL exists
-  } catch (e) {
-    console.error('URL Conversion Error:', e);
-    return url; // Fallback to original URL
-  }
+    return null;
 }
 
 // Enhanced local titles fetching with caching
