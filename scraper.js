@@ -276,7 +276,7 @@ async function processEpisode(browserManager, anime, matched, ep, processingId) 
     // Fallback to other links if no PixelDrain found
     if (!url_480 || !url_720) {
       console.log(`     [${processingId}] Checking alternative links...`);
-      for (const [resolution, links] of Object.entries(downloadData.other)) {
+     for (const [resolution, links] of Object.entries(downloadData.other || {})) {
         if (links.length > 0) {
           console.log(`       ▶ ${resolution}: ${links[0].url} (${links[0].type})`);
           
