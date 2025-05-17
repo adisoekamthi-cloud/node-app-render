@@ -155,7 +155,6 @@ class BrowserManager {
   }
 }
 
-// Comprehensive download link extractor
 // Simplified download link extractor - only gets PixelDrain links
 async function extractDownloadLinks(page) {
   return await page.evaluate(() => {
@@ -225,10 +224,13 @@ async function processLatestEpisode(browserManager, anime, matched, ep, processi
 
     // Get the highest resolution available (prioritize 720p then 480p)
     let bestUrl = '';
+    let bestResolution = '';
     if (downloadData.pixeldrain['720p'] && downloadData.pixeldrain['720p'].length > 0) {
       bestUrl = downloadData.pixeldrain['720p'][0].url;
+      bestResolution = '720p';
     } else if (downloadData.pixeldrain['480p'] && downloadData.pixeldrain['480p'].length > 0) {
       bestUrl = downloadData.pixeldrain['480p'][0].url;
+      bestResolution = '480p';
     }
 
     if (!bestUrl) {
@@ -236,18 +238,9 @@ async function processLatestEpisode(browserManager, anime, matched, ep, processi
       return null;
     }
 
-   for (const [resolution, links] of Object.entries(downloadData.pixeldrain)) {
-      if (links.length > 0) {
-        const convertedUrl = convertPixeldrainUrl(links[0].url);
-        console.log(`       ▶ ${resolution}: ${convertedUrl}`);
-        
-        if (resolution === '480p') url_480 = convertedUrl;
-        if (resolution === '720p') url_720 = convertedUrl;
-      }
-    }
-}
-   
-
+    const convertedUrl = convertPixeldrainUrl(bestUrl);
+    console.log(`     [${processingId}] Found PixelDrain link (${bestResolution}): ${convertedUrl}`);
+    
     // Prepare data for API
     const fileName = `${anime.title} episode ${ep.episode}`;
     const episodeNumber = parseInt(ep.episode.replace(/[^\d]/g, ''), 10) || 0;
@@ -258,8 +251,8 @@ async function processLatestEpisode(browserManager, anime, matched, ep, processi
       episode_number: episodeNumber,
       time: moment().format('YYYY-MM-DD HH:mm:ss'),
       view: 0,
-      url_480,
-      url_720,
+      url_480: bestResolution === '480p' ? convertedUrl : '',
+      url_720: bestResolution === '720p' ? convertedUrl : '',
       url_1080: '',
       url_1440: '',
       url_2160: '',
@@ -351,32 +344,35 @@ async function scrapeKuramanime() {
               timeout: CONFIG.timeout
             });
 
-            // Get episodes
-            console.log('   📺 Finding episodes...');
+            // Get latest episode only
+            console.log('   📺 Finding latest episode...');
             await animePage.waitForSelector('#animeEpisodes a.ep-button', { timeout: 30000 });
 
-            const episodes = await animePage.evaluate(() => {
-              return Array.from(document.querySelectorAll('#animeEpisodes a.ep-button')).map(ep => ({
-                episode: ep.innerText.trim().replace(/\s+/g, ' '),
-                link: ep.href
-              }));
+            const latestEpisode = await animePage.evaluate(() => {
+              const episodes = Array.from(document.querySelectorAll('#animeEpisodes a.ep-button'));
+              if (episodes.length === 0) return null;
+              const latest = episodes[0];
+              return {
+                episode: latest.innerText.trim().replace(/\s+/g, ' '),
+                link: latest.href
+              };
             });
 
-            console.log(`   Found ${episodes.length} episodes`);
+            if (!latestEpisode) {
+              console.log('   ❌ No episodes found');
+              return;
+            }
 
-            // Process each episode
-            for (const [epIndex, ep] of episodes.entries()) {
-              const processingId = Math.random().toString(36).substring(2, 8);
-              console.log(`   ${epIndex + 1}/${episodes.length} [${processingId}] Processing: ${ep.episode}`);
+            const processingId = Math.random().toString(36).substring(2, 8);
+            console.log(`   [${processingId}] Processing latest episode: ${latestEpisode.episode}`);
 
-              try {
-                const result = await processEpisode(browserManager, anime, matched, ep, processingId);
-                if (result) {
-                  console.log(`     ✅ [${processingId}] Server response: ${result.message || 'Success'}`);
-                }
-              } catch (epError) {
-                console.log(`     ❌ [${processingId}] Failed to process episode: ${epError.message}`);
+            try {
+              const result = await processLatestEpisode(browserManager, anime, matched, latestEpisode, processingId);
+              if (result) {
+                console.log(`     ✅ [${processingId}] Server response: ${result.message || 'Success'}`);
               }
+            } catch (epError) {
+              console.log(`     ❌ [${processingId}] Failed to process episode: ${epError.message}`);
             }
           } finally {
             await browserManager.closePage(animePage);
