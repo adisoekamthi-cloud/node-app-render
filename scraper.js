@@ -180,57 +180,48 @@ class BrowserManager {
 async function extractDownloadLinks(page) {
   return await page.evaluate(() => {
     const result = {
-      pixeldrain: {},
-      other: {}
+      pixeldrain: {
+        '480p': [],
+        '720p': []
+      }
     };
 
     const container = document.querySelector('#animeDownloadLink');
     if (!container) return null;
 
-    // Process all child nodes to handle various structures
-    let currentSection = null;
-    
+    let currentResolution = null;
+
     Array.from(container.childNodes).forEach(node => {
-      // Detect section headers
+      // Deteksi resolusi berdasarkan teks H6
       if (node.nodeName === 'H6' && node.classList?.contains('font-weight-bold')) {
         const text = node.textContent.trim();
-        currentSection = {
-          name: text,
-          resolution: text.match(/(\d+p)/i)?.[0] || 'unknown',
-          isHardsub: text.toLowerCase().includes('hardsub'),
-          links: []
-        };
+        const res = text.match(/(480p|720p)/i);
+        if (res) {
+          currentResolution = res[0];
+        } else {
+          currentResolution = null;
+        }
         return;
       }
 
-      // Process links under current section
-      if (currentSection && node.nodeName === 'A' && node.href) {
-        const link = {
+      // Hanya ambil link Pixeldrain pada resolusi 480p atau 720p
+      if (
+        currentResolution &&
+        node.nodeName === 'A' &&
+        node.href &&
+        node.href.includes('pixeldrain.com')
+      ) {
+        result.pixeldrain[currentResolution].push({
           url: node.href,
-          label: node.textContent.trim() || 'link',
-          type: node.href.includes('pixeldrain.com') ? 'pixeldrain' : 'other'
-        };
-        
-        currentSection.links.push(link);
-        
-        // Organize by service
-        if (link.type === 'pixeldrain') {
-          if (!result.pixeldrain[currentSection.resolution]) {
-            result.pixeldrain[currentSection.resolution] = [];
-          }
-          result.pixeldrain[currentSection.resolution].push(link);
-        } else {
-          if (!result.other[currentSection.resolution]) {
-            result.other[currentSection.resolution] = [];
-          }
-          result.other[currentSection.resolution].push(link);
-        }
+          label: node.textContent.trim() || 'link'
+        });
       }
     });
 
     return result;
   });
 }
+
 
 // Enhanced episode processor
 async function processEpisode(browserManager, anime, matched, ep, processingId) {
