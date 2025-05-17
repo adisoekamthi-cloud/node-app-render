@@ -238,46 +238,70 @@ async function processEpisode(browserManager, anime, matched, ep, processingId) 
       timeout: CONFIG.timeout
     });
 
-    // Wait for download section to load
     console.log(`     [${processingId}] Looking for download links...`);
     await epPage.waitForSelector('#animeDownloadLink', { timeout: 30000 });
 
-    // Extract all download links
-    const downloadData = await extractDownloadLinks(epPage);
-    if (!downloadData || !downloadData.pixeldrain) {
-      console.log(`     ❌ [${processingId}] No download links found`);
+    // Ambil hanya link pixeldrain
+    const pixeldrainLinks = await epPage.evaluate(() => {
+      const results = [];
+      const anchors = document.querySelectorAll('a');
+
+      anchors.forEach(a => {
+        const href = a.href;
+        if (href.includes('pixeldrain.com')) {
+          // Ambil resolusi dari teks atau sebelumnya
+          let quality = a.textContent.trim();
+
+          if (!quality.match(/\d{3,4}p/)) {
+            const prevText = a.previousSibling?.textContent || '';
+            const match = prevText.match(/(\d{3,4}p)/);
+            quality = match ? match[1] : 'unknown';
+          }
+
+          results.push({ quality, url: href });
+        }
+      });
+
+      return results;
+    });
+
+    if (!pixeldrainLinks || pixeldrainLinks.length === 0) {
+      console.log(`     ❌ [${processingId}] Tidak ada link pixeldrain ditemukan`);
       return null;
     }
 
-    // Process PixelDrain links first
+    console.log(`     [${processingId}] Found download links:`);
+
     let url_480 = '';
     let url_720 = '';
-    
-    console.log(`     [${processingId}] Found download links:`);
-    
-    // Process by resolution
-    for (const [resolution, links] of Object.entries(downloadData.pixeldrain)) {
-      if (links.length > 0) {
-        const convertedUrl = convertPixeldrainUrl(links[0].url);
-        console.log(`       ▶ ${resolution}: ${convertedUrl}`);
-        
-        if (resolution === '480p') url_480 = convertedUrl;
-        if (resolution === '720p') url_720 = convertedUrl;
-      }
+
+    pixeldrainLinks.forEach(link => {
+      const convertedUrl = convertPixeldrainUrl(link.url);
+      console.log(`       ▶ ${link.quality}: ${convertedUrl}`);
+
+      if (link.quality === '480p') url_480 = convertedUrl;
+      if (link.quality === '720p') url_720 = convertedUrl;
+    });
+
+    if (!url_480 || !url_720) {
+      console.log(`     [${processingId}] Salah satu resolusi tidak tersedia (480p / 720p)`);
     }
 
-    // Fallback to other links if no PixelDrain found
-    if (!url_480 || !url_720) {
-      console.log(`     [${processingId}] Checking alternative links...`);
-      for (const [resolution, links] of Object.entries(downloadData.other || {})) {
-        if (links.length > 0) {
-          console.log(`       ▶ ${resolution}: ${links[0].url} (${links[0].type})`);
-          
-          if (resolution === '480p' && !url_480) url_480 = links[0].url;
-          if (resolution === '720p' && !url_720) url_720 = links[0].url;
-        }
-      }
-    }
+    // Lanjutkan proses (misalnya kirim ke server)...
+    return {
+      id: processingId,
+      url_480,
+      url_720
+    };
+
+  } catch (err) {
+    console.error(`     ❌ [${processingId}] Error processing episode: ${err.message}`);
+    return null;
+  } finally {
+    await epPage.close();
+  }
+}
+
 
     // Prepare data for API
     const fileName = `${anime.title} episode ${ep.episode}`;
