@@ -180,40 +180,50 @@ class BrowserManager {
 async function extractDownloadLinks(page) {
   return await page.evaluate(() => {
     const result = {
-      pixeldrain: {
-        '480p': [],
-        '720p': []
-      }
+      pixeldrain: {},
+      other: {}
     };
 
     const container = document.querySelector('#animeDownloadLink');
     if (!container) return null;
 
-    let currentResolution = null;
+    let currentSection = null;
 
+    // Ambil semua anak dari container
     Array.from(container.childNodes).forEach(node => {
-      // Deteksi resolusi berdasarkan teks H6
       if (node.nodeName === 'H6' && node.classList?.contains('font-weight-bold')) {
         const text = node.textContent.trim();
-        const res = text.match(/(480p|720p)/i);
-        if (res) {
-          currentResolution = res[0];
-        } else {
-          currentResolution = null;
-        }
+        currentSection = {
+          name: text,
+          resolution: text.match(/(\d+p)/i)?.[0] || 'unknown',
+          isHardsub: text.toLowerCase().includes('hardsub'),
+          links: []
+        };
         return;
       }
 
-      // Hanya ambil link Pixeldrain pada resolusi 480p atau 720p
-      if (
-        currentResolution &&
-        node.nodeName === 'A' &&
-        node.href &&
-        node.href.includes('pixeldrain.com')
-      ) {
-        result.pixeldrain[currentResolution].push({
-          url: node.href,
-          label: node.textContent.trim() || 'link'
+      // Tangani link bahkan jika berada di dalam nested tag
+      if (currentSection) {
+        const anchors = node.querySelectorAll ? node.querySelectorAll('a') : [];
+
+        anchors.forEach(anchor => {
+          if (!anchor.href) return;
+
+          const link = {
+            url: anchor.href,
+            label: anchor.textContent.trim() || 'link',
+            type: anchor.href.includes('pixeldrain.com') ? 'pixeldrain' : 'other'
+          };
+
+          currentSection.links.push(link);
+
+          const group = link.type === 'pixeldrain' ? result.pixeldrain : result.other;
+
+          if (!group[currentSection.resolution]) {
+            group[currentSection.resolution] = [];
+          }
+
+          group[currentSection.resolution].push(link);
         });
       }
     });
@@ -221,6 +231,7 @@ async function extractDownloadLinks(page) {
     return result;
   });
 }
+
 
 
 // Enhanced episode processor
