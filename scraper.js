@@ -5,6 +5,7 @@ const moment = require('moment');
 
 puppeteer.use(StealthPlugin());
 
+// Konfigurasi utama
 const CONFIG = {
   timeout: 60000,
   userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36',
@@ -14,6 +15,7 @@ const CONFIG = {
   retryDelayBase: 2000,
 };
 
+// Fungsi konversi URL Pixeldrain
 function convertPixeldrainUrl(url) {
   if (typeof url !== 'string') return null;
   const regex = /https?:\/\/pixeldrain\.com\/[du]\/([a-zA-Z0-9]+)/;
@@ -21,6 +23,7 @@ function convertPixeldrainUrl(url) {
   return match ? `https://pixeldrain.com/api/filesystem/${match[1]}?attach` : null;
 }
 
+// Ambil data judul lokal dengan retry dan error handling
 async function getLocalTitles() {
   try {
     const response = await axios.get('https://app.ciptakode.my.id/getData.php', { timeout: 15000 });
@@ -38,6 +41,7 @@ async function getLocalTitles() {
   }
 }
 
+// Setup page dengan userAgent dan timeout
 async function preparePage(browser) {
   const page = await browser.newPage();
   await page.setUserAgent(CONFIG.userAgent);
@@ -45,6 +49,7 @@ async function preparePage(browser) {
   return page;
 }
 
+// Fungsi utama scraping Kuramanime
 async function scrapeKuramanime() {
   const localTitles = await getLocalTitles();
   if (localTitles.length === 0) {
@@ -64,7 +69,7 @@ async function scrapeKuramanime() {
       '--single-process',
       '--disable-gpu',
     ],
-    ignoreDefaultArgs: ['--disable-extensions'],
+    ignoreDefaultArgs: ["--disable-extensions"],
     timeout: 0,
   });
 
@@ -79,23 +84,25 @@ async function scrapeKuramanime() {
 
     await page.waitForSelector('.product__item', { timeout: 30000 });
 
-    const animeList = await page.evaluate(() =>
-      Array.from(document.querySelectorAll('.product__item')).map(item => {
+    // Ambil list anime dari halaman
+    const animeList = await page.evaluate(() => {
+      return Array.from(document.querySelectorAll('.product__item')).map(item => {
         const linkElem = item.querySelector('h5 a');
         return {
           title: linkElem?.textContent?.trim() || 'No title',
           link: linkElem?.href || null,
         };
-      }).filter(a => a.link)
-    );
+      }).filter(a => a.link);
+    });
 
     console.log(`📊 Found ${animeList.length} anime`);
 
+    // Filter anime yang ada di local data
     const matchedAnimes = animeList.filter(anime =>
       localTitles.some(local => local.title === anime.title.toLowerCase())
     );
 
-    console.log(`✅ Total anime yang cocok dengan local data: ${matchedAnimes.length}`);
+    console.log(`✅ Total anime di local data yang ditemukan di target: ${matchedAnimes.length}`);
 
     for (const anime of matchedAnimes) {
       const animeTitleLower = anime.title.toLowerCase();
@@ -112,7 +119,11 @@ async function scrapeKuramanime() {
         let episodePage = null;
 
         try {
-          animePage = await preparePage(browser);
+          // Buka halaman anime
+          animePage = await browser.newPage();
+          await animePage.setUserAgent(CONFIG.userAgent);
+          await animePage.setDefaultNavigationTimeout(CONFIG.timeout);
+
           await animePage.goto(anime.link, {
             waitUntil: CONFIG.waitUntil,
             timeout: CONFIG.timeout,
@@ -120,6 +131,7 @@ async function scrapeKuramanime() {
 
           await animePage.waitForSelector('#animeEpisodes a.ep-button', { timeout: 15000 });
 
+          // Ambil episode terbaru
           const episode = await animePage.evaluate(() => {
             const epButtons = Array.from(document.querySelectorAll('#animeEpisodes a.ep-button'));
             if (epButtons.length === 0) return null;
@@ -137,7 +149,11 @@ async function scrapeKuramanime() {
 
           console.log(`   📺 Latest Episode: ${episode.episode}`);
 
-          episodePage = await preparePage(browser);
+          // Buka halaman episode
+          episodePage = await browser.newPage();
+          await episodePage.setUserAgent(CONFIG.userAgent);
+          await episodePage.setDefaultNavigationTimeout(CONFIG.timeout);
+
           await episodePage.goto(episode.link, {
             waitUntil: CONFIG.waitUntil,
             timeout: CONFIG.timeout,
@@ -145,6 +161,7 @@ async function scrapeKuramanime() {
 
           await episodePage.waitForSelector('#animeDownloadLink', { timeout: 15000 });
 
+          // Ambil link pixeldrain per kualitas
           const pixeldrainLinks = await episodePage.evaluate(() => {
             const container = document.querySelector('#animeDownloadLink');
             if (!container) return null;
@@ -190,60 +207,71 @@ async function scrapeKuramanime() {
             console.log('     - No PixelDrain links found');
           }
 
-          const dataToSend = {
-            content_id: matched.content_id,
-            file_name: `${anime.title} episode ${episode.episode}`,
-            episode_number: parseInt(episode.episode.replace(/\D/g, '')) || 0,
-            time: moment().format('YYYY-MM-DD HH:mm:ss'),
-            view: 0,
-            url_480,
-            url_720,
-            url_1080: '',
-            url_1440: '',
-            url_2160: '',
-            title: anime.title,
-          };
-
+          // Kirim data episode ke server
           try {
-            const response = await axios.post('https://app.ciptakode.my.id/insertEpisode.php', dataToSend, { timeout: 10000 });
+            const response = await axios.post('https://app.ciptakode.my.id/insertEpisode.php', {
+              content_id: matched.content_id,
+              file_name: `${anime.title} episode ${episode.episode}`,
+              episode_number: parseInt(episode.episode.replace(/\D/g, '')) || 0,
+              time: moment().format('YYYY-MM-DD HH:mm:ss'),
+              view: 0,
+              url_480,
+              url_720,
+              url_1080: '',
+              url_1440: '',
+              url_2160: '',
+              title: anime.title,
+            }, { timeout: 10000 });
+
             console.log(`     ✅ Server response: ${response.data.message || 'Success'}`);
             success = true;
           } catch (error) {
             console.log(`     ❌ Failed to send data: ${error.message}`);
           }
 
+          // Tutup halaman jika masih terbuka
+          if (episodePage && !episodePage.isClosed()) await episodePage.close();
+          if (animePage && !animePage.isClosed()) await animePage.close();
+
+          // Delay antar request
+          await new Promise(resolve => setTimeout(resolve, CONFIG.delayBetweenRequests));
+
         } catch (error) {
           retryCount++;
           console.log(`   ❌ Attempt ${retryCount}/${CONFIG.maxRetries} failed: ${error.message}`);
+
+          // Tutup halaman jika error dan masih terbuka
+          if (episodePage && !episodePage.isClosed()) {
+            try { await episodePage.close(); } catch (_) { }
+          }
+          if (animePage && !animePage.isClosed()) {
+            try { await animePage.close(); } catch (_) { }
+          }
 
           if (retryCount < CONFIG.maxRetries) {
             const delay = CONFIG.retryDelayBase * retryCount;
             console.log(`   ⏳ Retrying after ${delay}ms...`);
             await new Promise(resolve => setTimeout(resolve, delay));
           }
-        } finally {
-          if (animePage && !animePage.isClosed()) await animePage.close().catch(() => {});
-          if (episodePage && !episodePage.isClosed()) await episodePage.close().catch(() => {});
         }
       }
-
-      await new Promise(resolve => setTimeout(resolve, CONFIG.delayBetweenRequests));
     }
 
     await page.close();
   } catch (error) {
-    console.error('🔥 Main error:', error.message);
+    console.error('🔥 Main error:', error);
   } finally {
     await browser.close();
     console.log('✅ Scraping process completed');
   }
 }
 
+// Jalankan scraping
 (async () => {
   try {
     await scrapeKuramanime();
   } catch (e) {
-    console.error('⛔ Fatal error:', e.message);
+    console.error('⛔ Fatal error:', e);
     process.exit(1);
   }
 })();
