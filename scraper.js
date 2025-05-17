@@ -64,7 +64,7 @@ async function scrapeKuramanime() {
 
         // Load anime list
         console.log('🌐 Loading anime list...');
-        await page.goto('https://v6.kuramanime.run/quick/ongoing?order_by=updated/', {
+        await page.goto('https://v6.kuramanime.run/quick/ongoing?order_by=updated&page=1', {
             waitUntil: CONFIG.waitUntil,
             timeout: CONFIG.timeout
         });
