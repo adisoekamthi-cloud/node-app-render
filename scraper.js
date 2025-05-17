@@ -335,8 +335,7 @@ async function scrapeKuramanime() {
           } else {
             console.log(`     ⚠️ Tidak ditemukan episode untuk ${anime.title}`);
           }
-
-      }
+      
     }
 
     console.log('🏁 Scraping selesai.');
