@@ -339,94 +339,96 @@ async function scrapeKuramanime() {
 
     // Get anime list
     console.log('🌐 Fetching anime list...');
-    const animeList = await withRetry(async () => {
-      const page = await browserManager.newPage();
+const animeList = await withRetry(async () => {
+  const page = await browserManager.newPage();
+  try {
+    await page.goto('https://v6.kuramanime.run/quick/ongoing?order_by=updated&page=1', {
+      waitUntil: CONFIG.waitUntil,
+      timeout: CONFIG.timeout
+    });
+
+    await page.waitForSelector('.product__item', { timeout: 30000 });
+
+    return await page.evaluate(() => {
+      return Array.from(document.querySelectorAll('.product__item')).map(item => {
+        const linkElem = item.querySelector('h5 a');
+        return {
+          title: linkElem?.textContent?.trim() || 'No title',
+          link: linkElem?.href || null,
+          image: item.querySelector('img')?.src || null
+        };
+      }).filter(a => a.link);
+    });
+  } finally {
+    await browserManager.closePage(page);
+  }
+}, 'fetch anime list');
+
+console.log(`📊 Found ${animeList.length} anime`);
+
+for (const [index, anime] of animeList.entries()) {
+  const animeTitleLower = anime.title.toLowerCase().trim();
+  const matched = localTitles.find(item => item.title === animeTitleLower);
+  if (!matched) continue;
+
+  console.log(`\n🎬 Processing (${index + 1}/${animeList.length}): ${anime.title}`);
+  console.log(`🆔 Content ID: ${matched.content_id}`);
+
+  try {
+    await withRetry(async () => {
+      const animePage = await browserManager.newPage();
       try {
-        await page.goto('https://v6.kuramanime.run/quick/ongoing?order_by=updated&page=1', {
+        console.log('   🌐 Loading anime page...');
+        await animePage.goto(anime.link, {
           waitUntil: CONFIG.waitUntil,
           timeout: CONFIG.timeout
         });
 
-        await page.waitForSelector('.product__item', { timeout: 30000 });
+        console.log('   📺 Finding episodes...');
+        await animePage.waitForSelector('#animeEpisodes a.ep-button', { timeout: 30000 });
 
-        return await page.evaluate(() => {
-          return Array.from(document.querySelectorAll('.product__item')).map(item => {
-            const linkElem = item.querySelector('h5 a');
-            return {
-              title: linkElem?.textContent?.trim() || 'No title',
-              link: linkElem?.href || null,
-              image: item.querySelector('img')?.src || null
-            };
-          }).filter(a => a.link);
+        const episodes = await animePage.evaluate(() => {
+          return Array.from(document.querySelectorAll('#animeEpisodes a.ep-button')).map(ep => ({
+            episode: ep.innerText.trim().replace(/\s+/g, ' '),
+            link: ep.href
+          }));
         });
-      } finally {
-        await browserManager.closePage(page);
-      }
-    }, 'fetch anime list');
 
-    console.log(`📊 Found ${animeList.length} anime`);
+        if (!episodes.length) {
+          console.warn('   ⚠️ No episodes found, skipping...');
+          return;
+        }
 
-    // Process each anime
-    for (const [index, anime] of animeList.entries()) {
-      const animeTitleLower = anime.title.toLowerCase().trim();
-      const matched = localTitles.find(item => item.title === animeTitleLower);
-      if (!matched) continue;
+        console.log(`   Found ${episodes.length} episodes`);
 
-      console.log(`\n🎬 Processing (${index + 1}/${animeList.length}): ${anime.title}`);
-      console.log(`🆔 Content ID: ${matched.content_id}`);
+        for (const [epIndex, ep] of episodes.entries()) {
+          const processingId = Math.random().toString(36).substring(2, 8);
+          console.log(`   ${epIndex + 1}/${episodes.length} [${processingId}] Processing: ${ep.episode}`);
 
-      try {
-        await withRetry(async () => {
-          const animePage = await browserManager.newPage();
           try {
-            // Get anime details
-            console.log('   🌐 Loading anime page...');
-            await animePage.goto(anime.link, {
-              waitUntil: CONFIG.waitUntil,
-              timeout: CONFIG.timeout
-            });
-
-            // Get episodes
-            console.log('   📺 Finding episodes...');
-            await animePage.waitForSelector('#animeEpisodes a.ep-button', { timeout: 30000 });
-
-            const episodes = await animePage.evaluate(() => {
-              return Array.from(document.querySelectorAll('#animeEpisodes a.ep-button')).map(ep => ({
-                episode: ep.innerText.trim().replace(/\s+/g, ' '),
-                link: ep.href
-              }));
-            });
-
-            console.log(`   Found ${episodes.length} episodes`);
-
-            // Process each episode
-            for (const [epIndex, ep] of episodes.entries()) {
-              const processingId = Math.random().toString(36).substring(2, 8);
-              console.log(`   ${epIndex + 1}/${episodes.length} [${processingId}] Processing: ${ep.episode}`);
-
-              try {
-                const result = await processEpisode(browserManager, anime, matched, ep, processingId);
-                if (result) {
-                  console.log(`     ✅ [${processingId}] Server response: ${result.message || 'Success'}`);
-                }
-              } catch (epError) {
-                console.log(`     ❌ [${processingId}] Failed to process episode: ${epError.message}`);
-              }
+            const result = await processEpisode(browserManager, anime, matched, ep, processingId);
+            if (result) {
+              console.log(`     ✅ [${processingId}] Server response: ${result.message || 'Success'}`);
             }
-          } finally {
-            await browserManager.closePage(animePage);
+          } catch (epError) {
+            console.error(`     ❌ [${processingId}] Failed to process episode: ${epError.message}`);
+            console.error(epError.stack);
           }
-        }, `process anime ${anime.title}`);
-      } catch (animeError) {
-        console.log(`❌ Failed to process anime: ${animeError.message}`);
+        }
+      } finally {
+        await browserManager.closePage(animePage);
       }
-    }
-  } catch (mainError) {
-    console.error('🔥 Main error:', mainError);
-  } finally {
-    console.log('🛑 Closing browser...');
-    await browserManager.close();
-    console.log('✅ Scraping process completed');
+    }, `process anime ${anime.title}`);
+  } catch (animeError) {
+    console.error(`❌ Failed to process anime: ${animeError.message}`);
+    console.error(animeError.stack);
+  }
+}
+
+console.log('🛑 Closing browser...');
+await browserManager.close();
+console.log('✅ Scraping process completed');
+
   }
 }
 
