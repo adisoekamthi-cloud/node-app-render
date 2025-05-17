@@ -5,19 +5,14 @@ const moment = require('moment');
 
 puppeteer.use(StealthPlugin());
 
-// Enhanced configuration with detailed options
+// Configuration
 const CONFIG = {
-  maxRetries: 3,
-  timeout: 120000, // 2 minute timeout
-  delayBetweenRequests: 5000, // 5 second delay
-  headless: true,
-  maxConcurrentPages: 1, // Process one at a time for stability
+  timeout: 60000,
   userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36',
-  waitUntil: 'networkidle2',
-  viewport: { width: 1920, height: 1080 }
+  waitUntil: 'networkidle2'
 };
 
-// Comprehensive URL converter with multiple patterns
+// PixelDrain URL converter
 function convertPixeldrainUrl(url) {
     const regex = /https?:\/\/pixeldrain\.com\/[du]\/([a-zA-Z0-9]+)/;
     const match = url.match(regex);
@@ -27,378 +22,196 @@ function convertPixeldrainUrl(url) {
     return null;
 }
 
-// Enhanced local titles fetching with caching
-let localTitlesCache = null;
-let lastFetchTime = 0;
-const CACHE_DURATION = 3600000; // 1 hour cache
-
+// Get local titles from server
 async function getLocalTitles() {
-  const now = Date.now();
-  if (localTitlesCache && (now - lastFetchTime) < CACHE_DURATION) {
-    return localTitlesCache;
-  }
-
-  try {
-    const response = await axios.get('https://app.ciptakode.my.id/getData.php', {
-      timeout: 15000,
-      headers: {
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache'
-      }
-    });
-    
-    if (response.data?.success) {
-      localTitlesCache = response.data.data.map(item => ({
-        content_id: item.content_id,
-        title: item.title.toLowerCase().trim()
-      }));
-      lastFetchTime = now;
-      return localTitlesCache;
-    }
-  } catch (error) {
-    console.error('Failed to fetch local titles:', error.message);
-    if (localTitlesCache) return localTitlesCache; // Return cached if available
-  }
-  
-  return [];
-}
-
-// Robust retry mechanism with exponential backoff
-async function withRetry(fn, context = '', maxRetries = CONFIG.maxRetries) {
-  let attempts = 0;
-  let lastError = null;
-  
-  const retry = async () => {
     try {
-      return await fn();
-    } catch (error) {
-      attempts++;
-      lastError = error;
-      
-      if (attempts < maxRetries) {
-        const delay = Math.min(30000, Math.pow(2, attempts) * 1000); // Exponential backoff with max 30s
-        console.log(`   ⚠️ [${context}] Attempt ${attempts}/${maxRetries} failed. Retrying in ${delay/1000}s...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-        return retry();
-      }
-      throw lastError;
-    }
-  };
-  
-  return retry();
-}
-
-// Enhanced browser instance management
-class BrowserManager {
-  constructor() {
-    this.browser = null;
-    this.activePages = new Set();
-  }
-
-  async launch() {
-    this.browser = await puppeteer.launch({
-      headless: CONFIG.headless,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process',
-        '--disable-gpu',
-      ],
-      defaultViewport: CONFIG.viewport
-    });
-    return this.browser;
-  }
-
-  async newPage() {
-    if (!this.browser) {
-      throw new Error('Browser not initialized');
-    }
-    
-    const page = await this.browser.newPage();
-    this.activePages.add(page);
-    
-    await page.setUserAgent(CONFIG.userAgent);
-    await page.setDefaultNavigationTimeout(CONFIG.timeout);
-    
-    return page;
-  }
-
-  async closePage(page) {
-    try {
-      if (page && !page.isClosed()) {
-        await page.close();
-        this.activePages.delete(page);
-      }
-    } catch (e) {
-      console.error('Error closing page:', e.message);
-      this.activePages.delete(page);
-    }
-  }
-
-  async close() {
-    try {
-      // Close all active pages first
-      await Promise.all(Array.from(this.activePages).map(p => this.closePage(p)));
-      
-      if (this.browser) {
-        await this.browser.close();
-      }
-    } catch (e) {
-      console.error('Error closing browser:', e.message);
-    } finally {
-      this.browser = null;
-    }
-  }
-}
-
-// Simplified download link extractor - only gets PixelDrain links
-async function extractDownloadLinks(page) {
-  return await page.evaluate(() => {
-    const result = {
-      pixeldrain: {}
-    };
-
-    const container = document.querySelector('#animeDownloadLink');
-    if (!container) return null;
-
-    // Process all child nodes to handle various structures
-    let currentSection = null;
-    
-    Array.from(container.childNodes).forEach(node => {
-      // Detect section headers
-      if (node.nodeName === 'H6' && node.classList?.contains('font-weight-bold')) {
-        const text = node.textContent.trim();
-        currentSection = {
-          resolution: text.match(/(\d+p)/i)?.[0] || 'unknown',
-          links: []
-        };
-        return;
-      }
-
-      // Only process PixelDrain links under current section
-      if (currentSection && node.nodeName === 'A' && node.href && node.href.includes('pixeldrain.com')) {
-        const link = {
-          url: node.href,
-          label: node.textContent.trim() || 'link'
-        };
-        
-        currentSection.links.push(link);
-        
-        // Organize by resolution
-        if (!result.pixeldrain[currentSection.resolution]) {
-          result.pixeldrain[currentSection.resolution] = [];
+        const response = await axios.get('https://app.ciptakode.my.id/getData.php');
+        if (response.data.success) {
+            return response.data.data.map(item => ({
+                content_id: item.content_id,
+                title: item.title.toLowerCase()
+            }));
         }
-        result.pixeldrain[currentSection.resolution].push(link);
-      }
-    });
-
-    return result;
-  });
-}
-
-// Process only the latest episode with PixelDrain links
-async function processLatestEpisode(browserManager, anime, matched, ep, processingId) {
-  const epPage = await browserManager.newPage();
-  try {
-    console.log(`     [${processingId}] Loading episode page...`);
-    
-    await epPage.goto(ep.link, {
-      waitUntil: CONFIG.waitUntil,
-      timeout: CONFIG.timeout
-    });
-
-    // Wait for download section to load
-    console.log(`     [${processingId}] Looking for download links...`);
-    await epPage.waitForSelector('#animeDownloadLink', { timeout: 30000 });
-
-    // Extract only PixelDrain download links
-    const downloadData = await extractDownloadLinks(epPage);
-    if (!downloadData || !downloadData.pixeldrain || Object.keys(downloadData.pixeldrain).length === 0) {
-      console.log(`     ❌ [${processingId}] No PixelDrain links found`);
-      return null;
+    } catch (error) {
+        console.error('Gagal mengambil data dari server:', error.message);
     }
-
-    // Get the highest resolution available (prioritize 720p then 480p)
-    let bestUrl = '';
-    let bestResolution = '';
-    if (downloadData.pixeldrain['720p'] && downloadData.pixeldrain['720p'].length > 0) {
-      bestUrl = downloadData.pixeldrain['720p'][0].url;
-      bestResolution = '720p';
-    } else if (downloadData.pixeldrain['480p'] && downloadData.pixeldrain['480p'].length > 0) {
-      bestUrl = downloadData.pixeldrain['480p'][0].url;
-      bestResolution = '480p';
-    }
-
-    if (!bestUrl) {
-      console.log(`     ❌ [${processingId}] No valid PixelDrain links found`);
-      return null;
-    }
-
-    const convertedUrl = convertPixeldrainUrl(bestUrl);
-    console.log(`     [${processingId}] Found PixelDrain link (${bestResolution}): ${convertedUrl}`);
-    
-    // Prepare data for API
-    const fileName = `${anime.title} episode ${ep.episode}`;
-    const episodeNumber = parseInt(ep.episode.replace(/[^\d]/g, ''), 10) || 0;
-
-    const postData = {
-      content_id: matched.content_id,
-      file_name: fileName,
-      episode_number: episodeNumber,
-      time: moment().format('YYYY-MM-DD HH:mm:ss'),
-      view: 0,
-      url_480: bestResolution === '480p' ? convertedUrl : '',
-      url_720: bestResolution === '720p' ? convertedUrl : '',
-      url_1080: '',
-      url_1440: '',
-      url_2160: '',
-      title: anime.title
-    };
-
-    console.log(`     [${processingId}] Sending data to server...`);
-    const response = await axios.post('https://app.ciptakode.my.id/insertEpisode.php', postData, {
-      timeout: 15000,
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    });
-
-    return response.data;
-  } catch (error) {
-    console.error(`     ❌ [${processingId}] Processing failed:`, error.message);
-    throw error;
-  } finally {
-    await browserManager.closePage(epPage);
-    await new Promise(resolve => setTimeout(resolve, CONFIG.delayBetweenRequests));
-  }
+    return [];
 }
 
 // Main scraping function
 async function scrapeKuramanime() {
-  const browserManager = new BrowserManager();
-  let browser = null;
-
-  try {
-    // Initialize
-    console.log('🚀 Starting scraping process...');
-    browser = await browserManager.launch();
-    
-    // Get local titles
-    console.log('🔍 Fetching local titles...');
     const localTitles = await getLocalTitles();
     if (localTitles.length === 0) {
-      console.log('❌ No local titles found');
-      return;
+        console.log('❌ Tidak ada data lokal ditemukan.');
+        return;
     }
 
-    // Get anime list
-    console.log('🌐 Fetching anime list...');
-    const animeList = await withRetry(async () => {
-      const page = await browserManager.newPage();
-      try {
-        await page.goto('https://v6.kuramanime.run/quick/ongoing?order_by=updated&page=1', {
-          waitUntil: CONFIG.waitUntil,
-          timeout: CONFIG.timeout
-        });
+    const browser = await puppeteer.launch({
+        headless: true,
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process',
+            '--disable-gpu',
+        ],
+    });
 
+    const page = await browser.newPage();
+    await page.setUserAgent(CONFIG.userAgent);
+    const baseUrl = 'https://v6.kuramanime.run/quick/ongoing?order_by=latest&page=1';
+
+    try {
+        // Load anime list
+        await page.goto(baseUrl, { waitUntil: CONFIG.waitUntil, timeout: CONFIG.timeout });
         await page.waitForSelector('.product__item', { timeout: 30000 });
 
-        return await page.evaluate(() => {
-          return Array.from(document.querySelectorAll('.product__item')).map(item => {
-            const linkElem = item.querySelector('h5 a');
-            return {
-              title: linkElem?.textContent?.trim() || 'No title',
-              link: linkElem?.href || null,
-              image: item.querySelector('img')?.src || null
-            };
-          }).filter(a => a.link);
+        const animeList = await page.evaluate(() => {
+            return Array.from(document.querySelectorAll('.product__item')).map(item => {
+                const linkElem = item.querySelector('h5 a');
+                return {
+                    title: linkElem?.textContent?.trim() || 'Tidak ada judul',
+                    link: linkElem?.href || null
+                };
+            }).filter(a => a.link);
         });
-      } finally {
-        await browserManager.closePage(page);
-      }
-    }, 'fetch anime list');
 
-    console.log(`📊 Found ${animeList.length} anime`);
+        console.log(`📊 Found ${animeList.length} anime`);
 
-    // Process each anime
-    for (const [index, anime] of animeList.entries()) {
-      const animeTitleLower = anime.title.toLowerCase().trim();
-      const matched = localTitles.find(item => item.title === animeTitleLower);
-      if (!matched) continue;
+        // Process each anime
+        for (const anime of animeList) {
+            const animeTitleLower = anime.title.toLowerCase();
+            const matched = localTitles.find(item => item.title === animeTitleLower);
 
-      console.log(`\n🎬 Processing (${index + 1}/${animeList.length}): ${anime.title}`);
-      console.log(`🆔 Content ID: ${matched.content_id}`);
+            if (!matched) continue;
 
-      try {
-        await withRetry(async () => {
-          const animePage = await browserManager.newPage();
-          try {
-            // Get anime details
-            console.log('   🌐 Loading anime page...');
-            await animePage.goto(anime.link, {
-              waitUntil: CONFIG.waitUntil,
-              timeout: CONFIG.timeout
-            });
-
-            // Get latest episode only
-            console.log('   📺 Finding latest episode...');
-            await animePage.waitForSelector('#animeEpisodes a.ep-button', { timeout: 30000 });
-
-            const latestEpisode = await animePage.evaluate(() => {
-              const episodes = Array.from(document.querySelectorAll('#animeEpisodes a.ep-button'));
-              if (episodes.length === 0) return null;
-              const latest = episodes[0];
-              return {
-                episode: latest.innerText.trim().replace(/\s+/g, ' '),
-                link: latest.href
-              };
-            });
-
-            if (!latestEpisode) {
-              console.log('   ❌ No episodes found');
-              return;
-            }
-
-            const processingId = Math.random().toString(36).substring(2, 8);
-            console.log(`   [${processingId}] Processing latest episode: ${latestEpisode.episode}`);
+            console.log(`\n🎬 Processing: ${anime.title}`);
+            console.log(`🆔 Content ID: ${matched.content_id}`);
 
             try {
-              const result = await processLatestEpisode(browserManager, anime, matched, latestEpisode, processingId);
-              if (result) {
-                console.log(`     ✅ [${processingId}] Server response: ${result.message || 'Success'}`);
-              }
-            } catch (epError) {
-              console.log(`     ❌ [${processingId}] Failed to process episode: ${epError.message}`);
+                // Go to anime page
+                await page.goto(anime.link, { waitUntil: CONFIG.waitUntil, timeout: CONFIG.timeout });
+                await page.waitForSelector('#animeEpisodes a.ep-button', { timeout: 15000 });
+
+                // Get latest episode only
+                const episode = await page.evaluate(() => {
+                    const epButtons = Array.from(document.querySelectorAll('#animeEpisodes a.ep-button'));
+                    if (epButtons.length === 0) return null;
+                    const latest = epButtons[epButtons.length - 1]; // Get last episode
+                    return {
+                        episode: latest.innerText.trim().replace(/\s+/g, ' '),
+                        link: latest.href
+                    };
+                });
+
+                if (!episode) {
+                    console.log('   - No episodes found');
+                    continue;
+                }
+
+                console.log(`   📺 Latest Episode: ${episode.episode}`);
+
+                // Go to episode page
+                await page.goto(episode.link, { waitUntil: CONFIG.waitUntil, timeout: CONFIG.timeout });
+                await page.waitForSelector('#animeDownloadLink', { timeout: 15000 });
+
+                // Extract PixelDrain links for MP4 480p and 720p
+                const pixeldrainLinks = await page.evaluate(() => {
+                    const container = document.querySelector('#animeDownloadLink');
+                    if (!container) return null;
+
+                    const result = {};
+                    const headers = Array.from(container.querySelectorAll('h6.font-weight-bold')).filter(h =>
+                        /mp4 480p/i.test(h.innerText) || /mp4 720p/i.test(h.innerText)
+                    );
+
+                    headers.forEach(header => {
+                        const qualityText = header.innerText.trim();
+                        let sib = header.nextElementSibling;
+                        const urls = [];
+
+                        while (sib && sib.tagName.toLowerCase() !== 'h6') {
+                            if (sib.tagName.toLowerCase() === 'a' && sib.href.includes('pixeldrain.com')) {
+                                urls.push(sib.href);
+                            }
+                            sib = sib.nextElementSibling;
+                        }
+
+                        if (urls.length > 0) {
+                            result[qualityText] = urls;
+                        }
+                    });
+
+                    return result;
+                });
+
+                let url_480 = '';
+                let url_720 = '';
+
+                if (pixeldrainLinks) {
+                    for (const [quality, links] of Object.entries(pixeldrainLinks)) {
+                        const convertedLinks = links.map(rawUrl => convertPixeldrainUrl(rawUrl) || rawUrl);
+                        
+                        if (/480p/i.test(quality)) {
+                            url_480 = convertedLinks[0] || '';
+                            console.log(`     ▶ 480p: ${url_480}`);
+                        }
+                        if (/720p/i.test(quality)) {
+                            url_720 = convertedLinks[0] || '';
+                            console.log(`     ▶ 720p: ${url_720}`);
+                        }
+                    }
+                } else {
+                    console.log('     - No PixelDrain links found');
+                }
+
+                // Prepare data for API
+                const fileName = `${anime.title} episode ${episode.episode}`;
+                const episodeNumber = parseInt(episode.episode.replace(/[^\d]/g, ''), 10) || 0;
+
+                try {
+                    const response = await axios.post('https://app.ciptakode.my.id/insertEpisode.php', {
+                        content_id: matched.content_id,
+                        file_name: fileName,
+                        episode_number: episodeNumber,
+                        time: moment().format('YYYY-MM-DD HH:mm:ss'),
+                        view: 0,
+                        url_480,
+                        url_720,
+                        url_1080: '',
+                        url_1440: '',
+                        url_2160: '',
+                        title: anime.title
+                    });
+
+                    console.log('     ✅ Data sent to server:', response.data.message || 'Success');
+                } catch (error) {
+                    console.log('     ❌ Failed to send data:', error.message);
+                }
+
+            } catch (error) {
+                console.log(`   ❌ Error processing anime: ${error.message}`);
             }
-          } finally {
-            await browserManager.closePage(animePage);
-          }
-        }, `process anime ${anime.title}`);
-      } catch (animeError) {
-        console.log(`❌ Failed to process anime: ${animeError.message}`);
-      }
+        }
+    } catch (error) {
+        console.error('🔥 Main error:', error);
+    } finally {
+        await browser.close();
+        console.log('✅ Scraping process completed');
     }
-  } catch (mainError) {
-    console.error('🔥 Main error:', mainError);
-  } finally {
-    console.log('🛑 Closing browser...');
-    await browserManager.close();
-    console.log('✅ Scraping process completed');
-  }
 }
 
 // Start the scraping process
 (async () => {
-  try {
-    await scrapeKuramanime();
-  } catch (e) {
-    console.error('⛔ Fatal error:', e);
-    process.exit(1);
-  }
+    try {
+        await scrapeKuramanime();
+    } catch (e) {
+        console.error('⛔ Fatal error:', e);
+        process.exit(1);
+    }
 })();
 
 module.exports = { scrapeKuramanime };
