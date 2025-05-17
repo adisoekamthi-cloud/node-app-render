@@ -64,7 +64,7 @@ async function scrapeKuramanime() {
 
         // Load anime list
         console.log('🌐 Loading anime list...');
-        await page.goto('https://v6.kuramanime.run/quick/ongoing?order_by=updated&page=1', {
+        await page.goto('https://v6.kuramanime.run/quick/ongoing?order_by=latest&page=1', {
             waitUntil: CONFIG.waitUntil,
             timeout: CONFIG.timeout
         });
@@ -82,11 +82,18 @@ async function scrapeKuramanime() {
 
         console.log(`📊 Found ${animeList.length} anime`);
 
-        // Process each anime with retry mechanism
-        for (const anime of animeList) {
+        // Filter anime yang ada di local data
+        const matchedAnimes = animeList.filter(anime => {
+            const animeTitleLower = anime.title.toLowerCase();
+            return localTitles.some(local => local.title === animeTitleLower);
+        });
+
+        console.log(`✅ Total anime di local data yang ditemukan di target: ${matchedAnimes.length}`);
+
+        // Process only matched anime
+        for (const anime of matchedAnimes) {
             const animeTitleLower = anime.title.toLowerCase();
             const matched = localTitles.find(item => item.title === animeTitleLower);
-            if (!matched) continue;
 
             console.log(`\n🎬 Processing: ${anime.title}`);
             console.log(`🆔 Content ID: ${matched.content_id}`);
@@ -96,18 +103,15 @@ async function scrapeKuramanime() {
 
             while (retryCount < CONFIG.maxRetries && !success) {
                 try {
-                    // Use new page for each anime to prevent navigation issues
                     const animePage = await browser.newPage();
                     await animePage.setUserAgent(CONFIG.userAgent);
                     await animePage.setDefaultNavigationTimeout(CONFIG.timeout);
 
-                    // Load anime page
                     await animePage.goto(anime.link, {
                         waitUntil: CONFIG.waitUntil,
                         timeout: CONFIG.timeout
                     });
 
-                    // Get latest episode
                     await animePage.waitForSelector('#animeEpisodes a.ep-button', { timeout: 15000 });
                     const episode = await animePage.evaluate(() => {
                         const epButtons = Array.from(document.querySelectorAll('#animeEpisodes a.ep-button'));
@@ -125,7 +129,6 @@ async function scrapeKuramanime() {
 
                     console.log(`   📺 Latest Episode: ${episode.episode}`);
 
-                    // Load episode page
                     const episodePage = await browser.newPage();
                     await episodePage.setUserAgent(CONFIG.userAgent);
                     await episodePage.setDefaultNavigationTimeout(CONFIG.timeout);
@@ -135,7 +138,6 @@ async function scrapeKuramanime() {
                         timeout: CONFIG.timeout
                     });
 
-                    // Extract PixelDrain links
                     await episodePage.waitForSelector('#animeDownloadLink', { timeout: 15000 });
                     const pixeldrainLinks = await episodePage.evaluate(() => {
                         const container = document.querySelector('#animeDownloadLink');
@@ -179,7 +181,6 @@ async function scrapeKuramanime() {
                         console.log('     - No PixelDrain links found');
                     }
 
-                    // Send data to server
                     try {
                         const response = await axios.post('https://app.ciptakode.my.id/insertEpisode.php', {
                             content_id: matched.content_id,
@@ -221,6 +222,7 @@ async function scrapeKuramanime() {
         console.log('✅ Scraping process completed');
     }
 }
+
 
 // Start the scraping process
 (async () => {
