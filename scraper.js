@@ -187,50 +187,47 @@ async function extractDownloadLinks(page) {
     const container = document.querySelector('#animeDownloadLink');
     if (!container) return null;
 
-    let currentSection = null;
+    const children = Array.from(container.children);
+    for (let i = 0; i < children.length; i++) {
+      const node = children[i];
 
-    // Ambil semua anak dari container
-    Array.from(container.childNodes).forEach(node => {
-      if (node.nodeName === 'H6' && node.classList?.contains('font-weight-bold')) {
-        const text = node.textContent.trim();
-        currentSection = {
-          name: text,
-          resolution: text.match(/(\d+p)/i)?.[0] || 'unknown',
-          isHardsub: text.toLowerCase().includes('hardsub'),
-          links: []
-        };
-        return;
-      }
+      if (node.tagName === 'H6' && node.classList.contains('font-weight-bold')) {
+        const title = node.textContent.trim();
+        const resolution = title.match(/(\d{3,4}p)/)?.[0] || 'unknown';
+        const isHardsub = title.toLowerCase().includes('hardsub');
 
-      // Tangani link bahkan jika berada di dalam nested tag
-      if (currentSection) {
-        const anchors = node.querySelectorAll ? node.querySelectorAll('a') : [];
+        // Cari <a> setelah <h6>, biasanya setelah <hr>
+        let nextLink = null;
+        for (let j = i + 1; j < children.length; j++) {
+          if (children[j].tagName === 'A') {
+            nextLink = children[j];
+            break;
+          }
+        }
 
-        anchors.forEach(anchor => {
-          if (!anchor.href) return;
-
+        if (nextLink && nextLink.href) {
           const link = {
-            url: anchor.href,
-            label: anchor.textContent.trim() || 'link',
-            type: anchor.href.includes('pixeldrain.com') ? 'pixeldrain' : 'other'
+            url: nextLink.href,
+            label: nextLink.textContent.trim() || 'link',
+            type: nextLink.href.includes('pixeldrain.com') ? 'pixeldrain' : 'other',
+            isHardsub
           };
-
-          currentSection.links.push(link);
 
           const group = link.type === 'pixeldrain' ? result.pixeldrain : result.other;
 
-          if (!group[currentSection.resolution]) {
-            group[currentSection.resolution] = [];
+          if (!group[resolution]) {
+            group[resolution] = [];
           }
 
-          group[currentSection.resolution].push(link);
-        });
+          group[resolution].push(link);
+        }
       }
-    });
+    }
 
     return result;
   });
 }
+
 
 
 
