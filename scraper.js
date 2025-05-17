@@ -115,124 +115,135 @@ async function scrapeKuramanime() {
       let success = false;
 
       while (retryCount < CONFIG.maxRetries && !success) {
-        try {
-          const animePage = await preparePage(browser);
+  let animePage = null;
+  let episodePage = null;
+  try {
+    animePage = await browser.newPage();
+    await animePage.setUserAgent(CONFIG.userAgent);
+    await animePage.setDefaultNavigationTimeout(CONFIG.timeout);
 
-          // Buka halaman detail anime
-          await animePage.goto(anime.link, {
-            waitUntil: CONFIG.waitUntil,
-            timeout: CONFIG.timeout,
-          });
+    await animePage.goto(anime.link, {
+      waitUntil: CONFIG.waitUntil,
+      timeout: CONFIG.timeout
+    });
 
-          await animePage.waitForSelector('#animeEpisodes a.ep-button', { timeout: 15000 });
+    await animePage.waitForSelector('#animeEpisodes a.ep-button', { timeout: 15000 });
 
-          // Ambil episode terbaru
-          const episode = await animePage.evaluate(() => {
-            const epButtons = Array.from(document.querySelectorAll('#animeEpisodes a.ep-button'));
-            if (epButtons.length === 0) return null;
-            const lastEp = epButtons[epButtons.length - 1];
-            return {
-              episode: lastEp.innerText.trim(),
-              link: lastEp.href,
-            };
-          });
+    const episode = await animePage.evaluate(() => {
+      const epButtons = Array.from(document.querySelectorAll('#animeEpisodes a.ep-button'));
+      if (epButtons.length === 0) return null;
+      const lastEp = epButtons[epButtons.length - 1];
+      return {
+        episode: lastEp.innerText.trim(),
+        link: lastEp.href
+      };
+    });
 
-          if (!episode) {
-            console.log('   - No episodes found');
-            await animePage.close();
-            break;
+    if (!episode) {
+      console.log('   - No episodes found');
+      break;
+    }
+
+    console.log(`   📺 Latest Episode: ${episode.episode}`);
+
+    episodePage = await browser.newPage();
+    await episodePage.setUserAgent(CONFIG.userAgent);
+    await episodePage.setDefaultNavigationTimeout(CONFIG.timeout);
+
+    await episodePage.goto(episode.link, {
+      waitUntil: CONFIG.waitUntil,
+      timeout: CONFIG.timeout
+    });
+
+    await episodePage.waitForSelector('#animeDownloadLink', { timeout: 15000 });
+
+    const pixeldrainLinks = await episodePage.evaluate(() => {
+      const container = document.querySelector('#animeDownloadLink');
+      if (!container) return null;
+
+      const result = {};
+      const headers = Array.from(container.querySelectorAll('h6.font-weight-bold'))
+        .filter(h => /mp4 (480p|720p)/i.test(h.innerText));
+
+      headers.forEach(header => {
+        const quality = header.innerText.match(/mp4 (480p|720p)/i)[1].toLowerCase();
+        let sib = header.nextElementSibling;
+        const urls = [];
+
+        while (sib && sib.tagName !== 'H6') {
+          if (sib.tagName === 'A' && sib.href.includes('pixeldrain.com')) {
+            urls.push(sib.href);
           }
+          sib = sib.nextElementSibling;
+        }
 
-          console.log(`   📺 Latest Episode: ${episode.episode}`);
+        if (urls.length > 0) result[quality] = urls;
+      });
 
-          // Buka halaman episode untuk ambil link download
-          const episodePage = await preparePage(browser);
+      return result;
+    });
 
-          await episodePage.goto(episode.link, {
-            waitUntil: CONFIG.waitUntil,
-            timeout: CONFIG.timeout,
-          });
+    let url_480 = '';
+    let url_720 = '';
 
-          await episodePage.waitForSelector('#animeDownloadLink', { timeout: 15000 });
+    if (pixeldrainLinks) {
+      if (pixeldrainLinks['480p']) {
+        url_480 = convertPixeldrainUrl(pixeldrainLinks['480p'][0]) || '';
+        console.log(`     ▶ 480p: ${url_480}`);
+      }
+      if (pixeldrainLinks['720p']) {
+        url_720 = convertPixeldrainUrl(pixeldrainLinks['720p'][0]) || '';
+        console.log(`     ▶ 720p: ${url_720}`);
+      }
+    } else {
+      console.log('     - No PixelDrain links found');
+    }
 
-          // Ambil link pixeldrain per kualitas
-          const pixeldrainLinks = await episodePage.evaluate(() => {
-            const container = document.querySelector('#animeDownloadLink');
-            if (!container) return null;
+    // Kirim data episode ke server
+    try {
+      const response = await axios.post('https://app.ciptakode.my.id/insertEpisode.php', {
+        content_id: matched.content_id,
+        file_name: `${anime.title} episode ${episode.episode}`,
+        episode_number: parseInt(episode.episode.replace(/\D/g, '')) || 0,
+        time: moment().format('YYYY-MM-DD HH:mm:ss'),
+        view: 0,
+        url_480,
+        url_720,
+        url_1080: '',
+        url_1440: '',
+        url_2160: '',
+        title: anime.title
+      }, { timeout: 10000 });
 
-            const result = {};
-            const headers = Array.from(container.querySelectorAll('h6.font-weight-bold'))
-              .filter(h => /mp4 (480p|720p)/i.test(h.innerText));
+      console.log(`     ✅ Server response: ${response.data.message || 'Success'}`);
+      success = true;
+    } catch (error) {
+      console.log(`     ❌ Failed to send data: ${error.message}`);
+    }
 
-            headers.forEach(header => {
-              const qualityMatch = header.innerText.match(/mp4 (480p|720p)/i);
-              if (!qualityMatch) return;
-              const quality = qualityMatch[1].toLowerCase();
+    // Tutup halaman dengan pengecekan
+    if (episodePage && !episodePage.isClosed()) {
+      await episodePage.close();
+    }
+    if (animePage && !animePage.isClosed()) {
+      await animePage.close();
+    }
 
-              let sib = header.nextElementSibling;
-              const urls = [];
+    await new Promise(resolve => setTimeout(resolve, CONFIG.delayBetweenRequests));
+  } catch (error) {
+    retryCount++;
+    console.log(`   ❌ Attempt ${retryCount}/${CONFIG.maxRetries} failed: ${error.message}`);
 
-              while (sib && sib.tagName !== 'H6') {
-                if (sib.tagName === 'A' && sib.href.includes('pixeldrain.com')) {
-                  urls.push(sib.href);
-                }
-                sib = sib.nextElementSibling;
-              }
+    // Tutup halaman jika error dan masih terbuka
+    if (episodePage && !episodePage.isClosed()) {
+      try { await episodePage.close(); } catch (_) {}
+    }
+    if (animePage && !animePage.isClosed()) {
+      try { await animePage.close(); } catch (_) {}
+    }
 
-              if (urls.length > 0) result[quality] = urls;
-            });
-
-            return result;
-          });
-
-          let url_480 = '';
-          let url_720 = '';
-
-          if (pixeldrainLinks) {
-            if (pixeldrainLinks['480p']) {
-              url_480 = convertPixeldrainUrl(pixeldrainLinks['480p'][0]) || '';
-              console.log(`     ▶ 480p: ${url_480}`);
-            }
-            if (pixeldrainLinks['720p']) {
-              url_720 = convertPixeldrainUrl(pixeldrainLinks['720p'][0]) || '';
-              console.log(`     ▶ 720p: ${url_720}`);
-            }
-          } else {
-            console.log('     - No PixelDrain links found');
-          }
-
-          // Kirim data episode ke server
-          try {
-            const response = await axios.post('https://app.ciptakode.my.id/insertEpisode.php', {
-              content_id: matched.content_id,
-              file_name: `${anime.title} episode ${episode.episode}`,
-              episode_number: parseInt(episode.episode.replace(/\D/g, '')) || 0,
-              time: moment().format('YYYY-MM-DD HH:mm:ss'),
-              view: 0,
-              url_480,
-              url_720,
-              url_1080: '',
-              url_1440: '',
-              url_2160: '',
-              title: anime.title,
-            }, { timeout: 10000 });
-
-            console.log(`     ✅ Server response: ${response.data.message || 'Success'}`);
-            success = true;
-          } catch (error) {
-            console.log(`     ❌ Failed to send data: ${error.message}`);
-          }
-
-          await episodePage.close();
-          await animePage.close();
-
-          // Delay antar request supaya tidak terlalu cepat
-          await new Promise(resolve => setTimeout(resolve, CONFIG.delayBetweenRequests));
-        } catch (error) {
-          retryCount++;
-          console.log(`   ❌ Attempt ${retryCount}/${CONFIG.maxRetries} failed: ${error.message}`);
-          if (retryCount < CONFIG.maxRetries) {
-            await new Promise(resolve => setTimeout(resolve, CONFIG.retryDelayBase * retryCount));
+    if (retryCount < CONFIG.maxRetries) {
+      await new Promise(resolve => setTimeout(resolve, 2000 * retryCount));
           }
         }
       }
