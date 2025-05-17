@@ -236,17 +236,15 @@ async function processLatestEpisode(browserManager, anime, matched, ep, processi
       return null;
     }
 
-    const convertedUrl = convertPixeldrainUrl(bestUrl);
-    console.log(`     [${processingId}] Found PixelDrain link: ${convertedUrl}`);
-    
-    return {
-      url: convertedUrl,
-      resolution: bestUrl.includes('720p') ? '720p' : '480p'
-    };
-
-  } finally {
-    await epPage.close();
-  }
+   for (const [resolution, links] of Object.entries(downloadData.pixeldrain)) {
+      if (links.length > 0) {
+        const convertedUrl = convertPixeldrainUrl(links[0].url);
+        console.log(`       ▶ ${resolution}: ${convertedUrl}`);
+        
+        if (resolution === '480p') url_480 = convertedUrl;
+        if (resolution === '720p') url_720 = convertedUrl;
+      }
+    }
 }
    
 
